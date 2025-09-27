@@ -3,6 +3,7 @@
 import os
 from dotenv import load_dotenv
 import logging
+from pathlib import Path
 import boto3
 
 # --- ロガー設定 ---
@@ -11,7 +12,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%
 logger = logging.getLogger(__name__) # モジュール固有のロガー
 
 # --- 環境変数の読み込み ---
-load_dotenv() # スクリプトと同じ場所の .env ファイルを読み込む
+dotenv_path = Path(__file__).parent / '.env'
+if dotenv_path.exists():
+    load_dotenv(dotenv_path)
+    logger.info(f".env ファイル ({dotenv_path}) を読み込みました。")
+else:
+    logger.warning(f".env ファイル ({dotenv_path}) が見つかりません。環境変数から設定を読み取ります。")
 
 # --- 基本設定値 ---
 AWS_REGION = os.getenv('AWS_REGION', "ap-northeast-1") # .env またはデフォルト

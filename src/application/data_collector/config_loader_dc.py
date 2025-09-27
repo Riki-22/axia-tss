@@ -2,6 +2,7 @@
 import os
 import json # JSONをパースするためにインポート
 from dotenv import load_dotenv
+from pathlib import Path
 import logging
 import boto3
 import MetaTrader5 as mt5
@@ -10,8 +11,8 @@ import MetaTrader5 as mt5
 logger = logging.getLogger(f"data_collector.{__name__}")
 
 # --- 環境変数の読み込み ---
-dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
-if os.path.exists(dotenv_path):
+dotenv_path = Path(__file__).parent / '.env'
+if dotenv_path.exists():
     load_dotenv(dotenv_path)
     logger.info(f".env ファイル ({dotenv_path}) を読み込みました。")
 else:
