@@ -1,0 +1,89 @@
+//@version=6
+indicator("Webhook JSON Test Sender", overlay=true)
+
+// --- Input Parameters (Chart Settingsから調整可能) ---
+// 基本設定
+i_secret_phrase = input.string("rei_secret_phrase", title="Webhook Secret") // Lambdaの環境変数と同じ値を設定
+i_strategy_id   = input.string("TestScenario_001", title="Strategy/Scenario ID")
+i_strategy_name = input.string("TestStrategy", title="Strategy Name")
+i_order_action  = input.string("BUY", title="Order Action", options=["BUY", "SELL"])
+i_order_type    = input.string("IFOCO", title="Order Type", options=["IFOCO", "MARKET", "SCENARIO"])
+i_lot_size      = input.float(0.01, title="Lot Size", step=0.01)
+
+// 価格設定 (テスト用に現在の終値をベースに計算)
+i_entry_offset_pips = input.int(0, title="Entry Offset (pips from close)") // 0なら終値
+i_tp_pips       = input.int(50, title="TP (pips from entry)")
+i_sl_pips       = input.int(30, title="SL (pips from entry)")
+
+// ポジション管理フラグ (InputでON/OFF切り替え)
+i_enable_add_pos = input.bool(true, title="Enable Add Position")
+i_enable_breakeven = input.bool(true, title="Enable Breakeven")
+i_enable_trailing = input.bool(false, title="Enable Trailing Stop") // デフォルトOFF
+
+// ポジション管理パラメータ (Input)
+i_add_pos1_offset = input.int(50, title="AddPos1 Offset Pips")
+i_add_pos1_multi  = input.float(1.0, title="AddPos1 Lot Multiplier")
+i_add_pos2_offset = input.int(100, title="AddPos2 Offset Pips")
+i_add_pos2_multi  = input.float(0.5, title="AddPos2 Lot Multiplier")
+i_be_trigger_pips = input.int(20, title="Breakeven Trigger Pips")
+i_be_offset_pips  = input.int(2, title="Breakeven Offset Pips")
+i_ts_start_pips   = input.int(30, title="Trail Start Pips")
+i_ts_step_pips    = input.int(15, title="Trail Step Pips")
+
+// --- JSON生成ロジック ---
+// 価格を計算 (Pineの精度に合わせて調整が必要な場合あり)
+entryPrice = close + i_entry_offset_pips * syminfo.mintick * 10
+tpPrice    = entryPrice + (i_order_action == "BUY" ? 1 : -1) * i_tp_pips * syminfo.mintick * 10
+slPrice    = entryPrice - (i_order_action == "BUY" ? 1 : -1) * i_sl_pips * syminfo.mintick * 10
+
+// JSONの各セクションを個別に構築
+json_base_1 = '"secret": "' + i_secret_phrase + '",'
+json_base_2 = '"symbol": "' + syminfo.ticker + '",'
+json_base_3 = '"order_action": "' + i_order_action + '",'
+json_base_4 = '"order_type": "' + i_order_type + '",'
+json_base_5 = '"lot_size": ' + str.tostring(i_lot_size) + ','
+json_base_6 = '"entry_price": ' + str.tostring(entryPrice) + ','
+json_base_7 = '"tp_price": ' + str.tostring(tpPrice) + ','
+json_base_8 = '"sl_price": ' + str.tostring(slPrice) + ','
+json_base = json_base_1 + json_base_2 + json_base_3 + json_base_4 + json_base_5 + json_base_6 + json_base_7 + json_base_8
+
+json_scenario_1 = '"scenario_id": "' + i_strategy_id + '",'
+json_scenario_2 = '"scenario_activate_price": ' + str.tostring(entryPrice - 10 * syminfo.mintick * 10) + ','
+json_scenario_3 = '"scenario_entry_price": ' + str.tostring(entryPrice) + ','
+json_scenario_4 = '"scenario_cancel_price": ' + str.tostring(slPrice) + ','
+json_scenario = json_scenario_1 + json_scenario_2 + json_scenario_3 + json_scenario_4
+
+// 追加ポジション設定部分を個別に構築
+add_pos_config_1 = '"enable_add_position": ' + str.tostring(i_enable_add_pos) + ','
+add_pos_config_2 = '"add_position_config": ['
+add_pos_config_3 = '{"price_offset_pips": ' + str.tostring(i_add_pos1_offset) + ', "lot_multiplier": ' + str.tostring(i_add_pos1_multi) + '},'
+add_pos_config_4 = '{"price_offset_pips": ' + str.tostring(i_add_pos2_offset) + ', "lot_multiplier": ' + str.tostring(i_add_pos2_multi) + '}'
+add_pos_config_5 = '],'
+add_pos_config = add_pos_config_1 + add_pos_config_2 + add_pos_config_3 + add_pos_config_4 + add_pos_config_5
+
+// ブレイクイーブンとトレイリングストップ部分
+pos_management_1 = '"enable_breakeven": ' + str.tostring(i_enable_breakeven) + ','
+pos_management_2 = '"breakeven_trigger_pips": ' + str.tostring(i_be_trigger_pips) + ','
+pos_management_3 = '"breakeven_offset_pips": ' + str.tostring(i_be_offset_pips) + ','
+pos_management_4 = '"enable_trailing_stop": ' + str.tostring(i_enable_trailing) + ','
+pos_management_5 = '"trailing_start_pips": ' + str.tostring(i_ts_start_pips) + ','
+pos_management_6 = '"trailing_step_pips": ' + str.tostring(i_ts_step_pips) + ','
+pos_management = pos_management_1 + pos_management_2 + pos_management_3 + pos_management_4 + pos_management_5 + pos_management_6
+
+// メタ情報部分
+meta_info_1 = '"timestamp": "' + str.tostring(timenow) + '",'
+meta_info_2 = '"strategy_name": "' + i_strategy_name + '",'
+meta_info_3 = '"comment": "Webhook Test Alert - ' + syminfo.ticker + '"'
+meta_info = meta_info_1 + meta_info_2 + meta_info_3
+
+// すべてのセクションを結合して最終的なJSONを構築
+json_string = '{' + json_base + json_scenario + add_pos_config + pos_management + meta_info + '}'
+
+// --- アラートトリガー ---
+// テスト用に各バーの終値でアラートを発火させる
+test_condition = barstate.isconfirmed
+if test_condition
+    alert(json_string, alert.freq_once_per_bar_close) // 確定足で1回だけアラート
+
+// (オプション) デバッグ用にJSONをチャートに表示
+// label.new(bar_index, high, json_string) // 必要ならコメント解除して確認

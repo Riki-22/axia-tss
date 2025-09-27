@@ -1,0 +1,7 @@
+# src/ec2/data_collector/requirements.txt
+python-dotenv
+boto3
+pandas
+MetaTrader5
+pyarrow # pandas.to_parquet のため (または fastparquet)
+# yfinance # yfinanceを使用する場合

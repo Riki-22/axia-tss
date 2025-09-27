@@ -1,0 +1,11 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "tss-alert-ingestion"
+resolve_s3 = true
+s3_prefix = "tss-alert-ingestion"
+region = "ap-northeast-1"
+profile = "dev-sso"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "SQSQueueURL=\"https://sqs.ap-northeast-1.amazonaws.com/837692470023/TSS_OrderRequestQueue\" LambdaRoleArn=\"arn:aws:iam::837692470023:role/TSS_AlertIngestionLambdaRole\""
+image_repositories = []

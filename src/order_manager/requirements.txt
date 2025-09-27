@@ -1,0 +1,4 @@
+boto3
+python-dotenv
+MetaTrader5 # 将来的にMT5接続で必要になるため追加しておく
+pandas      # 将来的にデータ処理で必要になるため追加しておく

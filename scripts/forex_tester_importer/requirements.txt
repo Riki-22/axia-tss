@@ -1,0 +1,5 @@
+# scripts/forex_tester_importer/requirements.txt
+python-dotenv
+boto3
+pandas
+pyarrow  # pandas.to_parquet のため
