@@ -23,8 +23,16 @@
 # cp .env.example .env
 
 # source /opt/homebrew/anaconda3/bin/activate base
-# 仮想環境の作成
+
+# 既存環境を更新
+conda activate axia-env
+conda install -c conda-forge streamlit redis-py python-dotenv watchdog
+
+# 環境を再構築（クリーンな状態から）
+conda env remove -n axia-env
 conda env create -f environment.yml
+conda activate axia-env
+
 # 仮想環境の有効化
 conda activate axia-env
 ```

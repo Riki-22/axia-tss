@@ -14,8 +14,11 @@ dependencies:
   - nodejs>=20
 
   # --- PlotlyとJupyterLab拡張機能 ---
+  # CondaにJupyterLabと互換性のあるバージョンを解決させる
   - plotly
-  - anywidget
+  - anywidget # vectorbtのインタラクティブ描画に必要
+  # jupyterlab-plotly-extension はplotly>=5.13.0で自動的に含まれる
+  # - jupyterlab-plotly-extension
 
   # --- 主要な分析・バックテスト用ライブラリ ---
   - ta-lib
@@ -26,17 +29,10 @@ dependencies:
   - tqdm
   - scikit-learn
   - pytest
-  - nbformat
-
-  # --- Dashboard開発用 ---
-  - streamlit
-  - redis-py
-  - python-dotenv
-  - watchdog  # ファイル変更監視（開発効率化）
+  - nbformat # 互換性のために明示的に追加
 
   # --- pipでのみインストール可能なパッケージ ---
   - pip
   - pip:
     - vectorbt
     - Backtesting
-    # - MetaTrader5  # Windows環境でのみ手動インストール

@@ -1,0 +1,41 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Output file
+*.csv
+*.svg
+*.pdf
+
+# Python virtual environment
+.venv/
+venv/
+
+# Environment variables
+.env*
+
+# Secrets (if accidentally added)
+*.pem
+*secret*.json
+
+# Large data files in local test data
+data/historical/*
+data/backtest_results/*
+
+# IDE folders
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# docs
+**/archive/
+**/draft/
+docs/templates/
