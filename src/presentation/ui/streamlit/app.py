@@ -1,6 +1,20 @@
 # src/presentation/ui/streamlit/app.py
 
 import streamlit as st
+import sys
+from pathlib import Path
+from datetime import datetime
+
+# サービスのインポート
+sys.path.append(str(Path(__file__).parent))
+from services.dynamodb_service import DynamoDBService
+
+# DynamoDBサービスの初期化
+@st.cache_resource
+def init_services():
+    return DynamoDBService()
+
+db = init_services()
 
 st.set_page_config(
     page_title="AXIA Trading Strategy System", 
@@ -28,13 +42,37 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# === 3カラムレイアウト ===
-left, main, right = st.columns([1.2, 2.3, 1.5])
+# Kill Switch状態の取得と表示
+kill_switch_status = db.get_kill_switch_status()
+
+# === カラムレイアウト ===
+main, right = st.columns([4.0, 1.0])
 
 # =============================
-# 左カラム：システム制御
+# サイドバー：システム制御
 # =============================
-with left:
+with st.sidebar:
+    st.markdown("### 📡 システム状態")
+    
+    if kill_switch_status.get('active'):
+        st.error("🚨 **KILL SWITCH ACTIVE** - 全取引停止中")
+        st.caption(f"最終更新: {kill_switch_status.get('last_updated', 'N/A')}")
+    else:
+        st.success("✅ システム正常稼働中")
+
+    conn_test = db.test_connection()
+    if conn_test['status'] == 'SUCCESS':
+        st.success(f"✅ DB接続: {conn_test['table']}")
+    else:
+        st.error("❌ DB接続エラー")
+        st.caption(conn_test.get('error', 'Unknown error'))
+    
+    if st.button("🔄 更新", key="refresh"):
+        st.rerun()
+
+    st.caption(f"最終確認: {datetime.now().strftime('%H:%M:%S')}")
+
+    st.markdown("---")
     st.markdown("### ⚙️ Control Panel")
     
     # 取引パラメータ
@@ -62,8 +100,24 @@ with left:
     st.markdown("---")
     with st.container():
         st.markdown("#### 🚨 緊急停止")
-        if st.button("🛑 **KILL SWITCH**", type="primary", use_container_width=True):
-            st.error("Kill Switch 発動")
+        
+        current_status = kill_switch_status.get('status', 'OFF')
+        if current_status == 'ON':
+            if st.button("🔓 **Kill Switch 解除**", type="secondary", use_container_width=True):
+                result = db.set_kill_switch('OFF')
+                if result['success']:
+                    st.success("Kill Switch を解除しました")
+                    st.rerun()
+                else:
+                    st.error(f"エラー: {result.get('error')}")
+        else:
+            if st.button("🛑 **KILL SWITCH 発動**", type="primary", use_container_width=True):
+                result = db.set_kill_switch('ON')
+                if result['success']:
+                    st.warning("Kill Switch を発動しました")
+                    st.rerun()
+                else:
+                    st.error(f"エラー: {result.get('error')}")
         st.checkbox("全ポジション決済", key="ks1")
         st.checkbox("全注文キャンセル", key="ks2")
         st.checkbox("新規取引停止", key="ks3")
@@ -75,16 +129,14 @@ with main:
     st.markdown("## 📊 AXIA Trading Strategy System")
     
     # システムステータス
-    status_cols = st.columns(5)
+    status_cols = st.columns(4)
     with status_cols[0]:
-        st.metric("システム", "正常", "MT5 ✓")
-    with status_cols[1]:
         st.metric("現在価格", "150.250", "+0.05")
-    with status_cols[2]:
+    with status_cols[1]:
         st.metric("本日損益", "+2.45%", "+¥12,500")
-    with status_cols[3]:
+    with status_cols[2]:
         st.metric("ポジション", "2/3", None)
-    with status_cols[4]:
+    with status_cols[3]:
         st.metric("証拠金率", "285%", "安全")
     
     # メインタブ
