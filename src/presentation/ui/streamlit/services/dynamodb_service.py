@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
+from decimal import Decimal
 from typing import Dict, List, Optional
 
 # 親ディレクトリの.envを読み込み

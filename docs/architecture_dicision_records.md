@@ -122,3 +122,57 @@ EC2インスタンスを**パブリックサブネット**に配置する。こ�
 
 - デモ環境は、本番環境と比較してセキュリティレベルが低下する（ただし、許容範囲内と判断）。
 - 本番移行時に、ネットワーク構成の変更作業が発生する。
+
+
+## ADR-005: 段階的GSI実装戦略を採用
+
+**ステータス:** 決定済み  
+**日付:** 2025-09-30
+
+### 背景
+当初の設計では5つのGSI（Global Secondary Index）を一度に作成する計画だったが、実装フェーズで以下の問題が判明した：
+
+- 用途が不明確なGSIの存在
+- GSI1（戦略別）、GSI4（シグナル別）は現時点で具体的な使用場面がない
+  - 設計書ベースで作成したが、実際の要件が不明確
+- コストの無駄
+  - 使用しないGSIにも課金が発生
+  - ALL projectionによる全データ複製でコストが増大
+
+### 決定
+- GSI1のみ作成：オープンポジション高速取得用
+- YAGNI原則（You Ain't Gonna Need It）に従う
+  - 確実に必要な機能のみ実装
+  - 実際の使用パターンが明確になった時点で追加
+
+GSI1の設計
+```yaml
+GSI1:
+  用途: オープンポジションの高速取得
+  
+  キー設計:
+    パーティションキー: gs1pk = "OPEN_POSITIONS"（固定値）
+    ソートキー: gs1sk = "SYMBOL#<symbol>#<timestamp>"
+  
+  特性:
+    - スパースインデックス（OPENステータスのみ）
+    - Projection: INCLUDE（必要最小限の属性）
+    
+  投影属性:
+    - position_id, symbol, side, status
+    - size, entry_price, stop_loss, take_profit
+    - current_price, unrealized_pnl
+    - created_utc
+```
+### 実装ルール
+- スパース性の活用
+
+```python
+   # ポジション作成時
+   if status == 'OPEN':
+       item['gs1pk'] = 'OPEN_POSITIONS'
+       item['gs1sk'] = f'SYMBOL#{symbol}#{timestamp}'
+   
+   # ポジションクローズ時
+   # gs1pk, gs1skを削除してインデックスから除外
+```
