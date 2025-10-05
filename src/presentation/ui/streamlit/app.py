@@ -315,7 +315,7 @@ kill_switch_status = db.get_kill_switch_status()
 # サイドバー：システム制御
 # =============================
 with st.sidebar:
-    st.markdown("### 📡 システム状態")
+    st.markdown("#### 📡 システムステータス")
     
     if kill_switch_status.get('active'):
         st.error("🚨 **KILL SWITCH ACTIVE** - 全取引停止中")
@@ -330,13 +330,13 @@ with st.sidebar:
         st.error("❌ DB接続エラー")
         st.caption(conn_test.get('error', 'Unknown error'))
     
-    if st.button("🔄 更新", key="refresh"):
+    if st.button("🔄 リロード", key="refresh"):
         st.rerun()
 
     st.caption(f"最終確認: {datetime.now().strftime('%H:%M:%S')}")
 
     st.markdown("---")
-    st.markdown("### ⚙️ Control Panel")
+    st.markdown("#### ⚙️ コントロールパネル")
     
     # 資金管理
     with st.expander("💰 資金管理", expanded=True):
@@ -397,10 +397,10 @@ with status_cols[3]:
 
 # メインタブ
 chart_tab, position_tab, signal_tab, analysis_tab = st.tabs([
-    "📈 チャート", 
-    "💼 ポジション",
+    "📊 チャート", 
+    "📂 ポジション",
     "⚡ シグナル", 
-    "🎯 分析"
+    "📝 分析"
 ])
 
 with chart_tab:
@@ -420,7 +420,7 @@ with chart_tab:
             key="chart_timeframe"
         )
     with col3:
-        if st.button("🔄 更新", key="refresh_chart"):
+        if st.button("🔄 リロード", key="refresh_chart"):
             st.rerun()
 
     with st.expander("📃 注文パネル", expanded=True):
@@ -586,7 +586,8 @@ with analysis_tab:
         st.metric("推奨ロット", "0.73", None)
     
     # 市場レジーム
-    st.markdown("#### 🌡️ 市場レジーム分析")
+    st.markdown("---")
+    st.markdown("#### 🗂️ 市場レジーム分析")
     r1, r2, r3 = st.columns(3)
     with r1:
         st.info("**レジーム**: 上昇トレンド")
@@ -597,7 +598,8 @@ with analysis_tab:
         st.metric("ボラティリティ", "中", "→")
     
     # パフォーマンス
-    st.markdown("#### 📊 パフォーマンス指標")
+    st.markdown("---")
+    st.markdown("#### 🎯 パフォーマンス指標")
     p1, p2, p3, p4 = st.columns(4)
     with p1:
         st.metric("Sharpe Ratio", "1.85", "+0.12")

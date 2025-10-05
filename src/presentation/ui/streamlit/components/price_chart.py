@@ -19,11 +19,11 @@ class PriceChartComponent:
         
         # Plotlyチャート作成
         fig = make_subplots(
-            rows=3, cols=1,
+            rows=2, cols=1,
             shared_xaxes=True,
             vertical_spacing=0.03,
-            row_heights=[0.7, 0.15, 0.15],
-            subplot_titles=(f'{symbol} - {timeframe}', 'Volume', 'RSI')
+            row_heights=[0.8, 0.2],
+            subplot_titles=(f'{symbol} - {timeframe}', 'Volume')
         )
         
         # ローソク足チャート
@@ -56,39 +56,7 @@ class PriceChartComponent:
                 ),
                 row=1, col=1
             )
-        
-        # ボリンジャーバンド
-        bb_period = 20
-        bb_std = 2
-        df['BB_middle'] = df['close'].rolling(window=bb_period).mean()
-        df['BB_std'] = df['close'].rolling(window=bb_period).std()
-        df['BB_upper'] = df['BB_middle'] + (df['BB_std'] * bb_std)
-        df['BB_lower'] = df['BB_middle'] - (df['BB_std'] * bb_std)
-        
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['BB_upper'],
-                name='BB Upper',
-                line=dict(color='rgba(250,128,114,0.3)', width=1),
-                showlegend=False
-            ),
-            row=1, col=1
-        )
-        
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['BB_lower'],
-                name='BB Lower',
-                line=dict(color='rgba(250,128,114,0.3)', width=1),
-                fill='tonexty',
-                fillcolor='rgba(250,128,114,0.1)',
-                showlegend=False
-            ),
-            row=1, col=1
-        )
-        
+                
         # ボリューム
         colors = ['#26a69a' if row['close'] >= row['open'] else '#ef5350' 
                   for _, row in df.iterrows()]
@@ -100,27 +68,9 @@ class PriceChartComponent:
                 marker_color=colors,
                 showlegend=False
             ),
-            row=2, col=1
+            row=2, col=1  # row=2に変更
         )
-        
-        # RSI
-        df['RSI'] = PriceChartComponent._calculate_rsi(df['close'])
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['RSI'],
-                name='RSI',
-                line=dict(color='#ff9800', width=2)
-            ),
-            row=3, col=1
-        )
-        
-        # RSI基準線
-        fig.add_hline(y=70, line_dash="dash", line_color="red", 
-                     opacity=0.5, row=3, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="green", 
-                     opacity=0.5, row=3, col=1)
-        
+                
         # レイアウト設定
         fig.update_layout(
             template='plotly_dark',
@@ -128,8 +78,6 @@ class PriceChartComponent:
             showlegend=True,
             legend=dict(
                 orientation="h",
-                yanchor="bottom",
-                y=1.02,
                 xanchor="right",
                 x=1
             ),
@@ -184,13 +132,3 @@ class PriceChartComponent:
         df.set_index('datetime', inplace=True)
         return df
     
-    @staticmethod
-    def _calculate_rsi(prices, period=14):
-        """RSIを計算"""
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        return rsi
