@@ -254,29 +254,96 @@ class PriceChartComponent:
     def _add_support_resistance(self, fig, levels, df):
         """サポート/レジスタンスラインを描画"""
         
-        # サポートライン
-        for support in levels.get('support', []):
-            fig.add_hline(
+        # レジェンド用のダミートレースを追加（1回だけ）
+        support_levels = levels.get('support', [])
+        resistance_levels = levels.get('resistance', [])
+        
+        # サポートレジェンド（データがある場合のみ）
+        if support_levels:
+            # 最初のサポートラインでレジェンドを作成
+            first_support = support_levels[0]
+            fig.add_trace(
+                go.Scatter(
+                    x=[df.index[0], df.index[-1]],
+                    y=[first_support.level, first_support.level],
+                    mode='lines',
+                    name='Support',
+                    line=dict(color='green', width=1, dash='solid'),
+                    opacity=0.5,
+                    showlegend=True
+                ),
+                row=1, col=1
+            )
+            
+            # 残りのサポートライン（レジェンドなし）
+            for support in support_levels[1:]:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[df.index[0], df.index[-1]],
+                        y=[support.level, support.level],
+                        mode='lines',
+                        line=dict(color='green', width=1, dash='solid'),
+                        opacity=0.5,
+                        showlegend=False,
+                        hovertemplate=f'Support: {support.level:.3f}<extra></extra>'
+                    ),
+                    row=1, col=1
+                )
+        
+        # レジスタンスレジェンド（データがある場合のみ）
+        if resistance_levels:
+            # 最初のレジスタンスラインでレジェンドを作成
+            first_resistance = resistance_levels[0]
+            fig.add_trace(
+                go.Scatter(
+                    x=[df.index[0], df.index[-1]],
+                    y=[first_resistance.level, first_resistance.level],
+                    mode='lines',
+                    name='Resistance',
+                    line=dict(color='red', width=1, dash='solid'),
+                    opacity=0.5,
+                    showlegend=True
+                ),
+                row=1, col=1
+            )
+            
+            # 残りのレジスタンスライン（レジェンドなし）
+            for resistance in resistance_levels[1:]:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[df.index[0], df.index[-1]],
+                        y=[resistance.level, resistance.level],
+                        mode='lines',
+                        line=dict(color='red', width=1, dash='solid'),
+                        opacity=0.5,
+                        showlegend=False,
+                        hovertemplate=f'Resistance: {resistance.level:.3f}<extra></extra>'
+                    ),
+                    row=1, col=1
+                )
+        
+        # アノテーション追加（価格表示）
+        for support in support_levels:
+            fig.add_annotation(
+                x=df.index[-1],
                 y=support.level,
-                line_color="green",
-                line_width=1,
-                line_dash="solid",
-                opacity=0.5,
-                annotation_text=f"S: {support.level:.3f}",
-                annotation_position="right",
+                text=f"S: {support.level:.3f}",
+                showarrow=False,
+                xanchor="left",
+                yanchor="middle",
+                font=dict(size=10, color='green'),
                 row=1, col=1
             )
         
-        # レジスタンスライン
-        for resistance in levels.get('resistance', []):
-            fig.add_hline(
+        for resistance in resistance_levels:
+            fig.add_annotation(
+                x=df.index[-1],
                 y=resistance.level,
-                line_color="red",
-                line_width=1,
-                line_dash="solid",
-                opacity=0.5,
-                annotation_text=f"R: {resistance.level:.3f}",
-                annotation_position="right",
+                text=f"R: {resistance.level:.3f}",
+                showarrow=False,
+                xanchor="left",
+                yanchor="middle",
+                font=dict(size=10, color='red'),
                 row=1, col=1
             )
     
