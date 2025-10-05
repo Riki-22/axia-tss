@@ -4,10 +4,11 @@ import streamlit as st
 import sys
 from pathlib import Path
 from datetime import datetime
+from services.dynamodb_service import DynamoDBService
+from components.price_chart import PriceChartComponent
 
 # サービスのインポート
 sys.path.append(str(Path(__file__).parent))
-from services.dynamodb_service import DynamoDBService
 
 # DynamoDBサービスの初期化
 @st.cache_resource
@@ -19,28 +20,263 @@ db = init_services()
 st.set_page_config(
     page_title="AXIA Trading Strategy System", 
     page_icon="📊",
-    layout="wide"
+    layout="wide", # 常にwideモードを使用
+    initial_sidebar_state="collapsed"  # 初期状態でサイドバーを閉じる
 )
 
 # カスタムCSS
 st.markdown("""
 <style>
+    /* ダークテーマ強化 */
+    .stApp {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    }
+    
+    /* サイドバーのグラデーション */
     section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0f0f1e 0%, #1a1a2e 100%);
         width: 320px !important;
     }
+    
+    /* メトリクスカードのアニメーション */
+    [data-testid="metric-container"] {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        padding: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        transition: all 0.3s ease;
+    }
+    
+    [data-testid="metric-container"]:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* ボタンの改善 */
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        font-weight: bold;
+        transition: all 0.3s;
+    }
+    
+    .stButton > button:hover {
+        transform: scale(1.05);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Kill Switchボタンの特別スタイル */
+    button[kind="primary"] {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+    }
+    
+    /* タブのスタイリング */
+    .stTabs [data-baseweb="tab-list"] {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        padding: 5px;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: rgba(102, 126, 234, 0.3);
+    }
+    
+    /* プログレスバーのカスタマイズ */
+    .stProgress > div > div > div {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    /* ヘッダーのグラデーション */
     .main-header {
-        font-size: 28px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 32px;
         font-weight: bold;
         margin-bottom: 20px;
     }
+    
+    /* セクションヘッダー */
     .section-header {
-        background: rgba(255, 255, 255, 0.05);
-        padding: 8px 12px;
-        border-radius: 8px;
-        margin: 15px 0 10px 0;
+        background: rgba(102, 126, 234, 0.1);
+        border-left: 4px solid #667eea;
+        padding: 10px 15px;
+        border-radius: 5px;
+        margin: 20px 0 15px 0;
     }
 </style>
 """, unsafe_allow_html=True)
+
+# === ヘルパー関数（先に定義）===
+def show_position_details(position):
+    """ポジション詳細表示"""
+    st.info(f"{position['チケット']}の詳細を表示")
+
+def render_trading_panel():
+    """ポジション管理パネル（広い表示エリア）"""
+    
+    # === アクティブポジション概要 ===
+    st.markdown("### 💹 ポジション管理")
+    
+    # 概要メトリクス（横幅を活用）
+    summary_cols = st.columns(6)
+    with summary_cols[0]:
+        st.metric("オープン", "3", "ポジション数")
+    with summary_cols[1]:
+        st.metric("合計損益", "¥125,500", "+5.2%", delta_color="normal")
+    with summary_cols[2]:
+        st.metric("含み損益", "¥45,200", "+1.8%", delta_color="normal")
+    with summary_cols[3]:
+        st.metric("実現損益", "¥80,300", "+3.4%", delta_color="normal")
+    with summary_cols[4]:
+        st.metric("証拠金", "¥285,000", "28.5%使用")
+    with summary_cols[5]:
+        st.metric("余力", "¥715,000", "71.5%")
+    
+    st.divider()
+    
+    # === ポジション一覧（テーブル形式）===
+    st.markdown("#### 📍 アクティブポジション")
+    
+    # データフレームで表示
+    import pandas as pd
+    
+    positions_data = {
+        'チケット': ['#1234567', '#1234568', '#1234569'],
+        '通貨ペア': ['USDJPY', 'EURUSD', 'GBPJPY'],
+        '売買': ['BUY', 'SELL', 'BUY'],
+        'ロット': [0.10, 0.20, 0.15],
+        'エントリー': [150.250, 1.0850, 185.500],
+        '現在値': [150.450, 1.0835, 185.650],
+        '損益(円)': ['+¥20,000', '+¥32,000', '+¥15,000'],
+        '損益(pips)': ['+20.0', '+15.0', '+15.0'],
+        'TP': [151.250, 1.0750, 186.500],
+        'SL': [149.750, 1.0900, 185.000]
+    }
+    
+    df = pd.DataFrame(positions_data)
+    
+    # インタラクティブテーブル
+    selected = st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        selection_mode="single-row",
+        on_select="rerun",
+        column_config={
+            '損益(円)': st.column_config.TextColumn(
+                '損益(円)',
+                help='現在の損益'
+            ),
+            'ロット': st.column_config.NumberColumn(
+                'ロット',
+                format='%.2f'
+            ),
+            'エントリー': st.column_config.NumberColumn(
+                'エントリー',
+                format='%.3f'
+            ),
+            '現在値': st.column_config.NumberColumn(
+                '現在値',
+                format='%.3f'
+            )
+        }
+    )
+    
+    # === ポジション操作ボタン（選択したポジションに対して）===
+    if selected and selected.selection.rows:
+        selected_idx = selected.selection.rows[0]
+        selected_position = df.iloc[selected_idx]
+        
+        st.divider()
+        st.markdown(f"#### 🎯 選択中: {selected_position['チケット']} - {selected_position['通貨ペア']}")
+        
+        action_cols = st.columns(6)
+        with action_cols[0]:
+            if st.button("📊 詳細表示", use_container_width=True):
+                show_position_details(selected_position)
+        
+        with action_cols[1]:
+            if st.button("✏️ TP/SL修正", use_container_width=True):
+                show_modify_dialog(selected_position)
+        
+        with action_cols[2]:
+            if st.button("➗ 50%決済", use_container_width=True):
+                partial_close_position(selected_position, 0.5)
+        
+        with action_cols[3]:
+            if st.button("🔻 部分決済", use_container_width=True):
+                show_partial_close_dialog(selected_position)
+        
+        with action_cols[4]:
+            if st.button("⏸️ ヘッジ", use_container_width=True):
+                hedge_position(selected_position)
+        
+        with action_cols[5]:
+            if st.button("❌ 全決済", type="secondary", use_container_width=True):
+                close_position(selected_position)
+    
+    st.divider()
+    
+    # === 新規注文セクション ===
+    with st.expander("📝 新規注文", expanded=False):
+        render_new_order_form()
+    
+    # === 取引履歴 ===
+    with st.expander("📜 本日の取引履歴", expanded=False):
+        render_trade_history()
+
+# render_trading_panel内で呼び出されている未定義関数を追加
+
+def show_position_details(position):
+    """ポジション詳細表示（ダミー実装）"""
+    st.info(f"{position['チケット']}の詳細を表示")
+
+def show_modify_dialog(position):
+    """TP/SL修正ダイアログ（ダミー実装）"""
+    st.info("TP/SL修正機能は実装予定")
+
+def partial_close_position(position, ratio):
+    """部分決済（ダミー実装）"""
+    st.info(f"{position['チケット']}を{ratio*100}%決済")
+
+def show_partial_close_dialog(position):
+    """部分決済ダイアログ（ダミー実装）"""
+    st.info("部分決済機能は実装予定")
+
+def hedge_position(position):
+    """ヘッジポジション（ダミー実装）"""
+    st.info("ヘッジ機能は実装予定")
+
+def close_position(position):
+    """ポジション決済（ダミー実装）"""
+    st.warning(f"{position['チケット']}を決済")
+
+def render_new_order_form():
+    """新規注文フォーム"""
+    col1, col2 = st.columns(2)
+    with col1:
+        st.selectbox("通貨ペア", ["USDJPY", "EURUSD", "GBPJPY"])
+        st.number_input("ロット", 0.01, 1.0, 0.1, 0.01)
+    with col2:
+        st.number_input("TP (pips)", 0, 100, 50)
+        st.number_input("SL (pips)", 0, 100, 25)
+    
+    if st.button("注文実行", type="primary", use_container_width=True):
+        st.success("注文を実行しました")
+
+def render_trade_history():
+    """取引履歴表示"""
+    history_data = {
+        '時刻': ['14:35', '10:15', '09:45'],
+        '通貨': ['GBPJPY', 'AUDUSD', 'EURUSD'],
+        '売買': ['BUY', 'SELL', 'BUY'],
+        '損益': ['+¥1,250', '-¥850', '+¥2,100']
+    }
+    import pandas as pd
+    st.dataframe(pd.DataFrame(history_data), use_container_width=True)
 
 # Kill Switch状態の取得と表示
 kill_switch_status = db.get_kill_switch_status()
@@ -140,16 +376,53 @@ with main:
         st.metric("証拠金率", "285%", "安全")
     
     # メインタブ
-    chart_tab, signal_tab, analysis_tab = st.tabs(["📈 チャート", "⚡ シグナル", "🎯 分析"])
+    chart_tab, position_tab, signal_tab, analysis_tab = st.tabs([
+        "📈 チャート", 
+        "💼 ポジション管理",
+        "⚡ シグナル", 
+        "🎯 分析"
+    ])
     
     with chart_tab:
-        st.markdown("#### 価格チャート")
-        st.info("チャートエリア（Plotly実装予定）")
-        st.caption("""
-        表示要素: ローソク足 | MA(20/75/200) | トレンドチャネル | 
-        サポート/レジスタンス | パターン認識（Pinbar/Engulfing/Breakout）
-        """)
+        # チャート設定
+        col1, col2, col3 = st.columns([2, 2, 1])
+        with col1:
+            chart_symbol = st.selectbox(
+                "通貨ペア",
+                ["USDJPY", "EURJPY", "GBPJPY", "EURUSD", "GBPUSD"],
+                key="chart_symbol"
+            )
+        with col2:
+            chart_timeframe = st.selectbox(
+                "時間足",
+                ["M1", "M5", "M15", "M30", "H1", "H4", "D1"],
+                index=5,
+                key="chart_timeframe"
+            )
+        with col3:
+            if st.button("🔄 更新", key="refresh_chart"):
+                st.rerun()
+        
+        # チャート表示
+        try:
+            fig = PriceChartComponent.render_chart(
+                symbol=chart_symbol,
+                timeframe=chart_timeframe,
+                days=30
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"チャート表示エラー: {e}")
+            st.info("チャートを読み込み中...")
+
+            st.caption("""
+            表示要素: ローソク足 | MA(20/75/200) | トレンドチャネル | 
+            サポート/レジスタンス | パターン認識（Pinbar/Engulfing/Breakout）
+            """)
     
+    with position_tab:
+        render_trading_panel() 
+
     with signal_tab:
         # シグナル分析
         st.markdown("#### シグナル統合")
