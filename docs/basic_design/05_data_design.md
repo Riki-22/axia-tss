@@ -401,7 +401,7 @@ class TradingTimestamp:
 
 **データ取得パイプライン**:
 1. MT5 WebSocket接続 → 価格ティック受信
-2. データ検証・正規化 → Golden Schema変換
+2. データ検証・正規化 → standard_ohlcv_format変換
 3. Redisキャッシュ更新 → TTL 60秒
 4. イベント発火 → PriceUpdateEvent
 5. サブスクライバー通知

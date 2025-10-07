@@ -77,7 +77,7 @@
 - **目標**: コアアーキテクチャの確立と基本機能の実装
 - **主要成果物**:
   - **インフラ基盤**: AWS環境構築（EC2, S3, DynamoDB, Redis）
-  - **データ収集**: MT5連携によるOHLCVデータ取得・保存（Golden Schema）
+  - **データ収集**: MT5連携によるOHLCVデータ取得・保存（standard_ohlcv_format）
   - **ドメインモデル**: Position, Trade, Signal等の基本エンティティ実装
   - **シグナル生成**: 10種類のテクニカル指標実装（RSI, MACD等）
   - **リスク管理**: Kill Switch実装（日次損失上限2%）
