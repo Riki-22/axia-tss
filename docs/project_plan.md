@@ -66,7 +66,6 @@ src/
 │   │   │   └── mt5/
 │   │   │       ├── mt5_connection.py            # mt5_handler.py 分割
 │   │   │       ├── mt5_order_executor.py        # mt5_handler.py 分割
-│   │   │       ├── mt5_data_fetcher.py          # data_collector 分割
 │   │   │       ├── mt5_proxy_service.py         # 新規：Proxy本体
 │   │   │       ├── mt5_proxy_client.py          # 新規：Proxyクライアント
 │   │   │       └── mt5_connection_manager.py    # 新規：接続管理
@@ -105,14 +104,29 @@ src/
     │
     └── ui/
         └── streamlit/
-            ├── app.py                        # 修正必要
+            ├── app.py                        
             ├── components/
             │   └── price_charts/
-            │       ├── price_chart.py            # ✅ 実装済み
-            │       ├── chart_data_source.py      # ✅ 実装済み
-            │       ├── chart_indicators.py       # ✅ 実装済み
-            │       └── chart_renderer.py         # ✅ 実装済み
+            │       ├── price_chart.py            
+            │       ├── chart_data_source.py      
+            │       ├── chart_indicators.py       
+            │       └── chart_renderer.py         
+            ├── config
+            │   ├── page_config.py
+            │   └── styles.py
+            ├── layouts
+            │   ├── header.py
+            │   └── sidebar.py
+            ├── pages
+            │   ├── analysis_page.py
+            │   ├── chart_page.py
+            │   ├── position_page.py
+            │   └── signal_page.py
+            │── utils
+            │   └── trading_helpers.py
             └── services/                     # 削除予定
+                └── dynamodb_service.py
+
 ```
 
 ---
