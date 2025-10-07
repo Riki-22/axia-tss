@@ -97,7 +97,7 @@ class TrendChannelDetector:
         スイングポイント（極値）を検出
         """
         points = []
-        window = 5  # スイング検出用のウィンドウサイズ
+        window = 3 # スイング検出用のウィンドウサイズ
         
         for i in range(window, len(series) - window):
             if point_type == 'high':
@@ -126,7 +126,7 @@ class TrendChannelDetector:
         slope, intercept, r_value, p_value, std_err = stats.linregress(x_values, y_values)
         
         # R二乗値が低すぎる場合は無効
-        if abs(r_value) < 0.5:
+        if abs(r_value) < 0.1:
             return None
         
         # ラインにタッチするポイントを検出

@@ -7,6 +7,11 @@ from dotenv import load_dotenv
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional
+import logging
+
+# ロギング設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # 親ディレクトリの.envを読み込み
 env_path = Path(__file__).parent.parent / '.env'
@@ -22,7 +27,7 @@ class DynamoDBService:
                     'dynamodb',
                     region_name=os.getenv('AWS_REGION', 'ap-northeast-1')
                 )
-                print("認証方法: EC2 IAMロール")
+                logger.info("Authentication (EC2 IAM Role)")
             elif os.getenv('AWS_PROFILE'):
                 # ローカル開発 - プロファイル使用
                 session = boto3.Session(profile_name=os.getenv('AWS_PROFILE'))
@@ -30,14 +35,14 @@ class DynamoDBService:
                     'dynamodb',
                     region_name=os.getenv('AWS_REGION', 'ap-northeast-1')
                 )
-                print(f"認証方法: AWS Profile ({os.getenv('AWS_PROFILE')})")
+                logger.info("Authentication (AWS Profile)")
             else:
                 # デフォルト
                 self.dynamodb = boto3.resource(
                     'dynamodb',
                     region_name=os.getenv('AWS_REGION', 'ap-northeast-1')
                 )
-                print("認証方法: デフォルト")
+                logger.info("Authentication (Default Credentials)")
             
             self.table_name = os.getenv('DYNAMODB_STATE_TABLE_NAME')
             self.table = self.dynamodb.Table(self.table_name) if self.table_name else None

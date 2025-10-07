@@ -8,16 +8,26 @@ import numpy as np
 from datetime import datetime, timedelta
 import sys
 from pathlib import Path
+import logging
+
+# ロギング設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).parent.parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # ドメイン層のインポート
-from src.domain.technical_indicators.pattern_detectors.pinbar_detector import PinBarDetector
-from src.domain.technical_indicators.pattern_detectors.engulfing_detector import EngulfingDetector
-from src.domain.technical_indicators.level_detectors.support_resistance import SupportResistanceDetector
-from src.domain.technical_indicators.level_detectors.trend_channel import TrendChannelDetector
+try:
+    from src.domain.technical_indicators.pattern_detectors.pinbar_detector import PinBarDetector
+    from src.domain.technical_indicators.pattern_detectors.engulfing_detector import EngulfingDetector
+    from src.domain.technical_indicators.level_detectors.support_resistance import SupportResistanceDetector
+    from src.domain.technical_indicators.level_detectors.trend_channel import TrendChannelDetector
+    INDICATORS_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Technical indicators not available: {e}")
+    INDICATORS_AVAILABLE = False
 
 
 class PriceChartComponent:
@@ -28,11 +38,16 @@ class PriceChartComponent:
         self.pinbar_detector = PinBarDetector(min_confidence=0.6)
         self.engulfing_detector = EngulfingDetector(min_confidence=0.6)
         self.sr_detector = SupportResistanceDetector(window=20, min_touches=2)
-        self.channel_detector = TrendChannelDetector(min_points=3, lookback_period=50)
+        self.channel_detector = TrendChannelDetector(min_points=2, lookback_period=30)
     
     @staticmethod
     def render_chart(symbol="USDJPY", timeframe="H4", days=30):
         """インタラクティブな価格チャートを描画"""
+        
+        # デバッグ情報表示
+        with st.expander("🔧 デバッグ情報", expanded=False):
+            st.write(f"Symbol: {symbol}, Timeframe: {timeframe}, Days: {days}")
+            st.write(f"Indicators Available: {INDICATORS_AVAILABLE}")
         
         # インスタンス作成
         chart = PriceChartComponent()
@@ -40,10 +55,32 @@ class PriceChartComponent:
         # データ生成
         df = chart._generate_dummy_data(days)
         
+        # データ確認
+        with st.expander("🔍 データ確認", expanded=False):
+            st.write(f"データ件数: {len(df)}")
+            st.write(f"価格範囲: {df['close'].min():.2f} - {df['close'].max():.2f}")
+            st.write(df.head())
+        
         # テクニカル指標の検出
-        patterns = chart._detect_patterns(df)
-        levels = chart._detect_levels(df)
-        channel = chart._detect_channel(df)
+        patterns = {}
+        levels = {}
+        channel = None
+        
+        if INDICATORS_AVAILABLE:
+            patterns = chart._detect_patterns(df)
+            levels = chart._detect_levels(df)
+            channel = chart._detect_channel(df)
+            
+            # 検出結果の表示
+            with st.expander("🎯 検出結果", expanded=False):
+                st.write(f"Pin Bars: {len(patterns.get('pinbars', []))}")
+                st.write(f"Engulfings: {len(patterns.get('engulfings', []))}")
+                st.write(f"Support Levels: {len(levels.get('support', []))}")
+                st.write(f"Resistance Levels: {len(levels.get('resistance', []))}")
+                st.write(f"Channel Detected: {channel is not None}")
+                if channel:
+                    st.write(f"Channel Direction: {channel.trend_direction}")
+                    st.write(f"Channel Width: {channel.channel_width:.3f}")
         
         # Plotlyチャート作成
         fig = make_subplots(
@@ -76,10 +113,12 @@ class PriceChartComponent:
             chart._add_trend_channel(fig, channel, df)
         
         # サポート/レジスタンス描画
-        chart._add_support_resistance(fig, levels, df)
+        if levels:
+            chart._add_support_resistance(fig, levels, df)
         
         # パターンマーカー描画
-        chart._add_pattern_markers(fig, patterns, df)
+        if patterns:
+            chart._add_pattern_markers(fig, patterns, df)
         
         # 移動平均線（オプション）
         # for ma_period, color in [(20, 'yellow'), (50, 'orange'), (200, 'purple')]:
@@ -138,7 +177,7 @@ class PriceChartComponent:
                     dict(step="all", label="ALL")
                 ])
             ),
-            row=2, col=1
+            row=1, col=1
         )
         
         return fig
@@ -149,11 +188,14 @@ class PriceChartComponent:
             pinbars = self.pinbar_detector.detect(df)
             engulfings = self.engulfing_detector.detect(df)
             
+            logger.info(f"Detected {len(pinbars)} pin bars, {len(engulfings)} engulfings")
+            
             return {
                 'pinbars': pinbars,
                 'engulfings': engulfings
             }
         except Exception as e:
+            logger.error(f"Pattern detection error: {e}")
             st.warning(f"パターン検出エラー: {e}")
             return {'pinbars': [], 'engulfings': []}
     
@@ -161,11 +203,15 @@ class PriceChartComponent:
         """サポート/レジスタンス検出を実行"""
         try:
             support_levels, resistance_levels = self.sr_detector.detect(df)
+            
+            logger.info(f"Detected {len(support_levels)} support, {len(resistance_levels)} resistance")
+            
             return {
                 'support': support_levels,
                 'resistance': resistance_levels
             }
         except Exception as e:
+            logger.error(f"Level detection error: {e}")
             st.warning(f"レベル検出エラー: {e}")
             return {'support': [], 'resistance': []}
     
@@ -174,6 +220,7 @@ class PriceChartComponent:
         try:
             return self.channel_detector.detect(df)
         except Exception as e:
+            logger.error(f"❌ Channel detection error: {e}")
             st.warning(f"チャネル検出エラー: {e}")
             return None
     
@@ -196,7 +243,7 @@ class PriceChartComponent:
                 mode='lines',
                 name='Channel Upper',
                 line=dict(color='rgba(255, 255, 255, 0.5)', width=1, dash='dash'),
-                showlegend=True
+                showlegend=False
             ),
             row=1, col=1
         )
@@ -230,9 +277,9 @@ class PriceChartComponent:
                 x=x_points,
                 y=y_middle,
                 mode='lines',
-                name='Channel Middle',
+                name='Trend Channel',
                 line=dict(color='rgba(128, 128, 128, 0.5)', width=1, dash='dot'),
-                showlegend=False
+                showlegend=True
             ),
             row=1, col=1
         )
@@ -453,7 +500,7 @@ class PriceChartComponent:
     @staticmethod
     def _generate_dummy_data(days=30):
         """ダミーの価格データを生成（パターンを意図的に含む）"""
-        dates = pd.date_range(end=datetime.now(), periods=days*24, freq='H')
+        dates = pd.date_range(end=datetime.now(), periods=days*24, freq='h')
         
         # トレンドのあるデータを生成
         np.random.seed(42)

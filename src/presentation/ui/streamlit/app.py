@@ -208,7 +208,7 @@ def render_trading_panel():
     # インタラクティブテーブル
     selected = st.dataframe(
         df,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         selection_mode="single-row",
         on_select="rerun",
@@ -242,27 +242,27 @@ def render_trading_panel():
         
         action_cols = st.columns(6)
         with action_cols[0]:
-            if st.button("📊 詳細表示", use_container_width=True):
+            if st.button("📊 詳細表示", width='stretch'):
                 show_position_details(selected_position)
         
         with action_cols[1]:
-            if st.button("✏️ TP/SL修正", use_container_width=True):
+            if st.button("✏️ TP/SL修正", width='stretch'):
                 show_modify_dialog(selected_position)
         
         with action_cols[2]:
-            if st.button("➗ 50%決済", use_container_width=True):
+            if st.button("➗ 50%決済", width='stretch'):
                 partial_close_position(selected_position, 0.5)
         
         with action_cols[3]:
-            if st.button("🔻 部分決済", use_container_width=True):
+            if st.button("🔻 部分決済", width='stretch'):
                 show_partial_close_dialog(selected_position)
         
         with action_cols[4]:
-            if st.button("⏸️ ヘッジ", use_container_width=True):
+            if st.button("⏸️ ヘッジ", width='stretch'):
                 hedge_position(selected_position)
         
         with action_cols[5]:
-            if st.button("❌ 全決済", type="secondary", use_container_width=True):
+            if st.button("❌ 全決済", type="secondary", width='stretch'):
                 close_position(selected_position)
     
     st.divider()
@@ -306,7 +306,7 @@ def render_trade_history():
         '損益': ['+¥1,250', '-¥850', '+¥2,100']
     }
     import pandas as pd
-    st.dataframe(pd.DataFrame(history_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(history_data), width='stretch')
 
 # Kill Switch状態の取得と表示
 kill_switch_status = db.get_kill_switch_status()
@@ -360,7 +360,7 @@ with st.sidebar:
         
         current_status = kill_switch_status.get('status', 'OFF')
         if current_status == 'ON':
-            if st.button("🔓 **Kill Switch 解除**", type="secondary", use_container_width=True):
+            if st.button("🔓 **Kill Switch 解除**", type="secondary", width='stretch'):
                 result = db.set_kill_switch('OFF')
                 if result['success']:
                     st.success("Kill Switch を解除しました")
@@ -368,7 +368,7 @@ with st.sidebar:
                 else:
                     st.error(f"エラー: {result.get('error')}")
         else:
-            if st.button("🛑 **KILL SWITCH 発動**", type="primary", use_container_width=True):
+            if st.button("🛑 **KILL SWITCH 発動**", type="primary", width='stretch'):
                 result = db.set_kill_switch('ON')
                 if result['success']:
                     st.warning("Kill Switch を発動しました")
@@ -490,7 +490,7 @@ with chart_tab:
             if st.button(
                 f"🔼 BUY {chart_symbol}",  # 通貨ペアを明示
                 key="execute_buy",
-                use_container_width=True,
+                width='stretch',
                 type="primary"
             ):
                 st.success(f"""
@@ -503,7 +503,7 @@ with chart_tab:
             if st.button(
                 f"🔽 SELL {chart_symbol}",  # 通貨ペアを明示
                 key="execute_sell",
-                use_container_width=True,
+                width='stretch',
                 type="secondary"
             ):
                 st.error(f"""
@@ -519,7 +519,7 @@ with chart_tab:
             timeframe=chart_timeframe,
             days=30
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={'displayModeBar': False})
     except Exception as e:
         st.error(f"チャート表示エラー: {e}")
         st.info("チャートを読み込み中...")
