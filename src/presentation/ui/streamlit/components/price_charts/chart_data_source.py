@@ -1,4 +1,4 @@
-# src/presentation/ui/streamlit/components/chart_data_source.py
+# src/presentation/ui/streamlit/components/price_charts/chart_data_source.py
 
 import streamlit as st
 import pandas as pd
@@ -13,19 +13,19 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # プロジェクトルートをパスに追加
-project_root = Path(__file__).parent.parent.parent.parent.parent.parent
+project_root = Path(__file__).parent.parent.parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # Market Dataクライアントのインポート
 try:
-    from src.infrastructure.market_data.yfinance_client import YFinanceClient
+    from src.infrastructure.gateways.market_data.yfinance_gateway import YFinanceGateway
     YFINANCE_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"YFinance client not available: {e}")
     YFINANCE_AVAILABLE = False
 
 # ダミーデータジェネレーターのインポート
-from src.infrastructure.market_data.dummy_generator import DummyMarketDataGenerator
+from src.infrastructure.gateways.market_data.dummy_generator import DummyMarketDataGenerator
 
 
 class ChartDataSource:
@@ -40,7 +40,7 @@ class ChartDataSource:
         self.use_real_data = YFINANCE_AVAILABLE
         
         if self.use_real_data:
-            self.data_client = YFinanceClient(cache_duration=cache_duration)
+            self.data_client = YFinanceGateway(cache_duration=cache_duration)
         else:
             self.data_client = None
             logger.info("Using dummy data mode (YFinance not available)")
@@ -61,7 +61,7 @@ class ChartDataSource:
         """
         if use_real and YFINANCE_AVAILABLE:
             try:
-                client = YFinanceClient(cache_duration=300)
+                client = YFinanceGateway(cache_duration=300)
                 df = client.fetch_ohlcv(symbol, timeframe, period=period)
                 
                 if not df.empty:

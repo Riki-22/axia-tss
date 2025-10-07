@@ -1,4 +1,4 @@
-# src/infrastructure/market_data/yfinance_client.py
+# src/infrastructure/gateways/market_data/yfinance_gateway.py
 
 import yfinance as yf
 import pandas as pd
@@ -11,7 +11,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-class YFinanceClient:
+class YFinanceGateway:
     """
     Yahoo Finance APIを使用した市場データ取得クライアント
     FX向けに最適化、キャッシュ機能付き
@@ -310,7 +310,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
     # クライアント初期化
-    client = YFinanceClient(cache_duration=60)
+    client = YFinanceGateway(cache_duration=60)
     
     # OHLCVデータ取得
     df = client.fetch_ohlcv('USDJPY', 'H1', period='1mo')

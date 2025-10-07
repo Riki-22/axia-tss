@@ -61,14 +61,24 @@ src/
 │           └── collect_market_data.py       # data_collector ロジック
 │
 ├── infrastructure/                            # 技術的実装層
-│   ├── brokers/
-│   │   └── mt5/
-│   │       ├── mt5_connection.py            # mt5_handler.py 分割
-│   │       ├── mt5_order_executor.py        # mt5_handler.py 分割
-│   │       ├── mt5_data_fetcher.py          # data_collector 分割
-│   │       ├── mt5_proxy_service.py         # 新規：Proxy本体
-│   │       ├── mt5_proxy_client.py          # 新規：Proxyクライアント
-│   │       └── mt5_connection_manager.py    # 新規：接続管理
+│   ├── gateways/
+│   │   ├── brokers/
+│   │   │   └── mt5/
+│   │   │       ├── mt5_connection.py            # mt5_handler.py 分割
+│   │   │       ├── mt5_order_executor.py        # mt5_handler.py 分割
+│   │   │       ├── mt5_data_fetcher.py          # data_collector 分割
+│   │   │       ├── mt5_proxy_service.py         # 新規：Proxy本体
+│   │   │       ├── mt5_proxy_client.py          # 新規：Proxyクライアント
+│   │   │       └── mt5_connection_manager.py    # 新規：接続管理
+│   │   ├── market_data/
+│   │   │   ├── data_source_interface.py         # 新規：統合インターフェース
+│   │   │   ├── dummy_generator.py               # ✅ 実装済み
+│   │   │   ├── mt5_data_gateway.py              # data_collector 分割
+│   │   │   └── yfinance_gateway.py              # ✅ 実装済み
+│   │   └── messaging/
+│   │       └── sqs/
+│   │           ├── queue_listener.py            # main.py SQS部分
+│   │           └── order_publisher.py           # 新規：注文送信
 │   │
 │   ├── persistence/
 │   │   ├── dynamodb/
@@ -81,11 +91,6 @@ src/
 │   │   └── redis/
 │   │       ├── price_cache.py               # 新規：価格キャッシュ
 │   │       └── proxy_communication.py       # 新規：Proxy通信
-│   │
-│   ├── messaging/
-│   │   └── sqs/
-│   │       ├── queue_listener.py            # main.py SQS部分
-│   │       └── order_publisher.py           # 新規：注文送信
 │   │
 │   └── config/
 │       ├── settings.py                      # 新規：統合設定
@@ -102,9 +107,11 @@ src/
         └── streamlit/
             ├── app.py                        # 修正必要
             ├── components/
-            │   ├── price_chart.py            # ✅ 実装済み
-            │   ├── order_panel.py            # 新規
-            │   └── position_table.py         # 新規
+            │   └── price_charts/
+            │       ├── price_chart.py            # ✅ 実装済み
+            │       ├── chart_data_source.py      # ✅ 実装済み
+            │       ├── chart_indicators.py       # ✅ 実装済み
+            │       └── chart_renderer.py         # ✅ 実装済み
             └── services/                     # 削除予定
 ```
 
@@ -129,7 +136,7 @@ src/
 
 | 既存ファイル | 移動先 | 作業内容 |
 |------------|--------|---------|
-| `main.py` | `infrastructure/brokers/mt5/mt5_data_fetcher.py`<br>`infrastructure/persistence/s3/market_data_repository.py`<br>`presentation/cli/run_data_collector.py` | 機能別に3分割 |
+| `main.py` | `infrastructure/brokers/mt5/mt5_data_gateway.py`<br>`infrastructure/persistence/s3/market_data_repository.py`<br>`presentation/cli/run_data_collector.py` | 機能別に3分割 |
 | `config_loader_dc.py` | `infrastructure/config/mt5_config.py` | そのまま移動 |
 
 #### streamlit/services/ の移動

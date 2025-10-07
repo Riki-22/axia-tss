@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from services.dynamodb_service import DynamoDBService
-from components.price_chart import PriceChartComponent
+from components.price_charts.price_chart import PriceChartComponent
 
 # サービスのインポート
 sys.path.append(str(Path(__file__).parent))

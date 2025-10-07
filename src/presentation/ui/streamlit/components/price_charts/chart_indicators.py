@@ -1,4 +1,4 @@
-# src/presentation/ui/streamlit/components/chart_indicators.py
+# src/presentation/ui/streamlit/components/price_charts/chart_indicators.py
 
 import pandas as pd
 import logging
@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # プロジェクトルートをパスに追加
-project_root = Path(__file__).parent.parent.parent.parent.parent.parent
+project_root = Path(__file__).parent.parent.parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # ドメイン層のインポート

@@ -1,4 +1,4 @@
-# src/infrastructure/market_data/dummy_generator.py
+# src/infrastructure/gateways/market_data/dummy_generator.py
 
 import pandas as pd
 import numpy as np

@@ -1,4 +1,4 @@
-# src/presentation/ui/streamlit/components/chart_renderer.py
+# src/presentation/ui/streamlit/components/price_charts/chart_renderer.py
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots

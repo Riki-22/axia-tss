@@ -1,4 +1,4 @@
-# src/presentation/ui/streamlit/components/price_chart.py
+# src/presentation/ui/streamlit/components/price_charts/price_chart.py
 
 import streamlit as st
 import plotly.graph_objects as go
