@@ -369,9 +369,24 @@ class ChartRenderer:
     
     def _add_volume(self, fig: go.Figure, df: pd.DataFrame):
         """ボリュームバーを追加"""        
+        # ボリュームが全て0の場合は価格変動率を表示
         colors = [self.default_colors['candlestick_up'] if row['close'] >= row['open'] 
                  else self.default_colors['candlestick_down']
                  for _, row in df.iterrows()]
+        if df['volume'].sum() == 0:
+            # 価格変動率（ボラティリティ）を代替表示
+            price_changes = df['close'].pct_change().abs() * 100
+            
+            fig.add_trace(
+                go.Bar(
+                    x=df.index,
+                    y=price_changes,
+                    name='Volatility %',
+                    marker_color=colors,
+                    showlegend=False,
+                ),
+                row=2, col=1
+            )
 
         fig.add_trace(
             go.Bar(
