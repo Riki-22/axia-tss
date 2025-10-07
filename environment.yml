@@ -37,6 +37,7 @@ dependencies:
   # --- pipでのみインストール可能なパッケージ ---
   - pip
   - pip:
+    - yfinance  # Yahoo Finance API（市場データ取得）
     - vectorbt
     - Backtesting
     # - MetaTrader5  # Windows環境でのみ手動インストール

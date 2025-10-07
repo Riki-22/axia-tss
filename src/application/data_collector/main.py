@@ -95,7 +95,7 @@ def connect_to_mt5_dc(credentials):
 def fetch_ohlcv_data(symbol, timeframe_int, count):
     """
     指定されたシンボルとタイムフレームのOHLCVデータをMT5から取得し、
-    "Golden Schema"に準拠したDataFrameに変換する。
+    "standard_ohlcv_format"に準拠したDataFrameに変換する。
     """
     timeframe_str = TIMEFRAME_REVERSE_MAP.get(timeframe_int, "UNKNOWN")
     logger.info(f"MT5から {symbol} ({timeframe_str}) のOHLCVデータを {count} 件取得します。")
@@ -116,7 +116,7 @@ def fetch_ohlcv_data(symbol, timeframe_int, count):
             logger.warning(f"{symbol} ({timeframe_str}) のOHLCVデータを取得できませんでした。")
             return None
         
-        # --- ここからがGolden Schemaへの変換処理 ---
+        # --- ここからがstandard_ohlcv_formatへの変換処理 ---
         df = pd.DataFrame(rates)
         
         # 1. 'time' (Unix時間) を 'timestamp_utc' に変換
@@ -125,7 +125,7 @@ def fetch_ohlcv_data(symbol, timeframe_int, count):
         # 2. 'tick_volume' を 'volume' にリネーム
         df.rename(columns={'tick_volume': 'volume'}, inplace=True)
         
-        # 3. 必要な列を選択し、Golden Schemaの順序に並べる
+        # 3. 必要な列を選択し、standard_ohlcv_formatの順序に並べる
         golden_schema_cols = ['timestamp_utc', 'open', 'high', 'low', 'close', 'volume']
         df_golden = df[golden_schema_cols].copy()
         
@@ -138,7 +138,7 @@ def fetch_ohlcv_data(symbol, timeframe_int, count):
             'volume': 'int64'
         })
         
-        logger.info(f"{symbol} ({timeframe_str}) のOHLCVデータ {len(df_golden)} 件をGolden Schemaに準拠したDataFrameに変換しました。")
+        logger.info(f"{symbol} ({timeframe_str}) のOHLCVデータ {len(df_golden)} 件をstandard_ohlcv_formatに準拠したDataFrameに変換しました。")
         return df_golden
 
     except Exception as e:
