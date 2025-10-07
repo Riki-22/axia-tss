@@ -2,7 +2,6 @@
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 from datetime import datetime
 import logging
 from typing import Optional
@@ -24,6 +23,9 @@ try:
 except ImportError as e:
     logger.warning(f"YFinance client not available: {e}")
     YFINANCE_AVAILABLE = False
+
+# ダミーデータジェネレーターのインポート
+from src.infrastructure.market_data.dummy_generator import DummyMarketDataGenerator
 
 
 class ChartDataSource:
@@ -67,13 +69,13 @@ class ChartDataSource:
                     return df
                 else:
                     logger.warning(f"データ取得失敗、ダミーデータを使用: {symbol}")
-                    return ChartDataSource.generate_dummy_data(30)
+                    return ChartDataSource.generate_dummy_data(30, timeframe)
                     
             except Exception as e:
                 logger.error(f"データ取得エラー: {e}")
-                return ChartDataSource.generate_dummy_data(30)
+                return ChartDataSource.generate_dummy_data(30, timeframe)
         else:
-            return ChartDataSource.generate_dummy_data(30)
+            return ChartDataSource.generate_dummy_data(30, timeframe)
     
     def fetch_data(self, symbol: str, timeframe: str, days: int = 30) -> pd.DataFrame:
         """
@@ -98,13 +100,13 @@ class ChartDataSource:
                     return df
                 else:
                     logger.warning(f"データ取得失敗、ダミーデータを使用: {symbol}")
-                    return self.generate_dummy_data(days)
+                    return self.generate_dummy_data(days, timeframe)
                     
             except Exception as e:
                 logger.error(f"データ取得エラー: {e}")
-                return self.generate_dummy_data(days)
+                return self.generate_dummy_data(days, timeframe)
         else:
-            return self.generate_dummy_data(days)
+            return self.generate_dummy_data(days, timeframe)
     
     @staticmethod
     def get_period_string(days: int) -> str:
@@ -133,42 +135,25 @@ class ChartDataSource:
         return '1y'
     
     @staticmethod
-    def generate_dummy_data(days: int) -> pd.DataFrame:
+    def generate_dummy_data(days: int, timeframe: str = 'H1') -> pd.DataFrame:
         """
         ダミーデータ生成（フォールバック用）
         
         Args:
             days: 生成する日数
+            timeframe: 時間枠
         
         Returns:
             pd.DataFrame: ダミーのOHLCVデータ
         """
-        dates = pd.date_range(end=datetime.now(), periods=days*24, freq='h')
-        
-        # ランダムウォーク価格生成
-        np.random.seed(42)
-        price = 150.0
-        prices = []
-        
-        for _ in range(len(dates)):
-            change = np.random.randn() * 0.5
-            price += change
-            prices.append(price)
-        
-        # OHLCデータ生成
-        df = pd.DataFrame({
-            'open': prices + np.random.randn(len(dates)) * 0.1,
-            'high': prices + np.abs(np.random.randn(len(dates)) * 0.3),
-            'low': prices - np.abs(np.random.randn(len(dates)) * 0.3),
-            'close': prices,
-            'volume': np.random.randint(1000, 10000, len(dates))
-        }, index=dates)
-        
-        # 論理的整合性の確保
-        df['high'] = df[['open', 'high', 'low', 'close']].max(axis=1)
-        df['low'] = df[['open', 'high', 'low', 'close']].min(axis=1)
-        
-        return df
+        generator = DummyMarketDataGenerator(seed=42)
+        return generator.generate_ohlcv(
+            days=days,
+            timeframe=timeframe,
+            base_price=150.0,
+            volatility=0.5,
+            trend=0.0
+        )
     
     def get_data_source_info(self) -> str:
         """
