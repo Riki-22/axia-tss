@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 project_root = Path(__file__).parent.parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# Market Dataクライアントのインポート
+try:
+    from src.infrastructure.market_data.yfinance_client import YFinanceClient
+    YFINANCE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"YFinance client not available: {e}")
+    YFINANCE_AVAILABLE = False
+
 # ドメイン層のインポート
 try:
     from src.domain.technical_indicators.pattern_detectors.pinbar_detector import PinBarDetector
@@ -33,40 +41,106 @@ except ImportError as e:
 class PriceChartComponent:
     """価格チャート表示コンポーネント"""
     
-    def __init__(self):
-        """検出器の初期化"""
-        self.pinbar_detector = PinBarDetector(min_confidence=0.6)
-        self.engulfing_detector = EngulfingDetector(min_confidence=0.6)
-        self.sr_detector = SupportResistanceDetector(window=20, min_touches=2)
-        self.channel_detector = TrendChannelDetector(min_points=2, lookback_period=30)
+    def __init__(self, use_real_data: bool = True):
+        """
+        Args:
+            use_real_data: 実データを使用するかどうか
+        """
+        self.use_real_data = use_real_data and YFINANCE_AVAILABLE
+        
+        # データクライアント初期化
+        if self.use_real_data:
+            self.data_client = YFinanceClient(cache_duration=300)  # 5分キャッシュ
+        else:
+            self.data_client = None
+            
+        # 検出器の初期化
+        if INDICATORS_AVAILABLE:
+            self.pinbar_detector = PinBarDetector(min_confidence=0.6)
+            self.engulfing_detector = EngulfingDetector(min_confidence=0.6)
+            self.sr_detector = SupportResistanceDetector(window=20, min_touches=2)
+            self.channel_detector = TrendChannelDetector(min_points=2, lookback_period=30)
     
     @staticmethod
-    def render_chart(symbol="USDJPY", timeframe="H4", days=30):
-        """インタラクティブな価格チャートを描画"""
+    @st.cache_data(ttl=300)  # 5分キャッシュ
+    def fetch_market_data(symbol: str, timeframe: str, period: str = '1mo', use_real: bool = True) -> pd.DataFrame:
+        """
+        市場データ取得（キャッシュ付き）
         
-        # デバッグ情報表示
-        with st.expander("🔧 デバッグ情報", expanded=False):
-            st.write(f"Symbol: {symbol}, Timeframe: {timeframe}, Days: {days}")
-            st.write(f"Indicators Available: {INDICATORS_AVAILABLE}")
+        Args:
+            symbol: 通貨ペア
+            timeframe: 時間枠
+            period: 取得期間
+            use_real: 実データ使用フラグ
+        """
+        if use_real and YFINANCE_AVAILABLE:
+            try:
+                client = YFinanceClient(cache_duration=300)
+                df = client.fetch_ohlcv(symbol, timeframe, period=period)
+                
+                if not df.empty:
+                    logger.info(f"実データ取得成功: {symbol} {timeframe} - {len(df)}件")
+                    return df
+                else:
+                    logger.warning(f"データ取得失敗、ダミーデータを使用: {symbol}")
+                    return PriceChartComponent._generate_dummy_data(30)
+                    
+            except Exception as e:
+                logger.error(f"データ取得エラー: {e}")
+                return PriceChartComponent._generate_dummy_data(30)
+        else:
+            return PriceChartComponent._generate_dummy_data(30)
+    
+    @staticmethod
+    def render_chart(symbol: str = "USDJPY", 
+                    timeframe: str = "H1", 
+                    days: int = 30,
+                    use_real_data: bool = True,
+                    show_indicators: bool = True) -> go.Figure:
+        """
+        インタラクティブな価格チャートを描画
         
-        # インスタンス作成
-        chart = PriceChartComponent()
+        Args:
+            symbol: 通貨ペア
+            timeframe: 時間枠
+            days: 表示日数
+            use_real_data: 実データ使用フラグ
+            show_indicators: インジケーター表示フラグ
+        """
         
-        # データ生成
-        df = chart._generate_dummy_data(days)
+        # データ取得期間の設定
+        period_map = {
+            7: '7d',
+            14: '2wk',
+            30: '1mo',
+            60: '3mo',
+            180: '6mo',
+            365: '1y'
+        }
+        period = period_map.get(days, '1mo')
         
-        # データ確認
-        with st.expander("🔍 データ確認", expanded=False):
-            st.write(f"データ件数: {len(df)}")
-            st.write(f"価格範囲: {df['close'].min():.2f} - {df['close'].max():.2f}")
-            st.write(df.head())
+        # データ取得
+        df = PriceChartComponent.fetch_market_data(symbol, timeframe, period, use_real_data)
+        
+        if df.empty:
+            fig = go.Figure()
+            fig.add_annotation(
+                text="データが利用できません",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False
+            )
+            return fig
+        
+        # チャート作成
+        chart = PriceChartComponent(use_real_data=use_real_data)
         
         # テクニカル指標の検出
         patterns = {}
         levels = {}
         channel = None
         
-        if INDICATORS_AVAILABLE:
+        if show_indicators and INDICATORS_AVAILABLE:
             patterns = chart._detect_patterns(df)
             levels = chart._detect_levels(df)
             channel = chart._detect_channel(df)
@@ -83,6 +157,31 @@ class PriceChartComponent:
                     st.write(f"Channel Width: {channel.channel_width:.3f}")
         
         # Plotlyチャート作成
+        fig = chart._create_plotly_chart(df, patterns, levels, channel, symbol, timeframe, chart)
+        
+        # データソース情報を追加
+        data_source = "Yahoo Finance" if use_real_data and YFINANCE_AVAILABLE else "Dummy Data"
+        fig.add_annotation(
+            text=f"Data Source: {data_source} | Update: {datetime.now().strftime('%H:%M:%S')}",
+            xref="paper", yref="paper",
+            x=1, y=1.02,
+            xanchor="right",
+            yanchor="bottom",
+            showarrow=False,
+            font=dict(size=10, color="gray")
+        )
+        
+        return fig
+    
+    def _create_plotly_chart(self, df: pd.DataFrame, 
+                           patterns: dict, 
+                           levels: dict,
+                           channel: dict,
+                           symbol: str,
+                           timeframe: str,
+                           chart: 'PriceChartComponent') -> go.Figure:
+        """Plotlyチャートを作成"""
+        
         fig = make_subplots(
             rows=2, cols=1,
             shared_xaxes=True,
@@ -168,6 +267,7 @@ class PriceChartComponent:
         
         # X軸の範囲選択ボタン
         fig.update_xaxes(
+            rangeslider_visible=False,
             rangeselector=dict(
                 buttons=list([
                     dict(count=1, label="1D", step="day", stepmode="backward"),
@@ -177,6 +277,7 @@ class PriceChartComponent:
                     dict(step="all", label="ALL")
                 ])
             ),
+            type="date",
             row=1, col=1
         )
         
@@ -496,52 +597,33 @@ class PriceChartComponent:
                 ),
                 row=1, col=1
             )
-    
+
     @staticmethod
-    def _generate_dummy_data(days=30):
-        """ダミーの価格データを生成（パターンを意図的に含む）"""
+    def _generate_dummy_data(days: int) -> pd.DataFrame:
+        """ダミーデータ生成（フォールバック用）"""
         dates = pd.date_range(end=datetime.now(), periods=days*24, freq='h')
         
-        # トレンドのあるデータを生成
+        # ランダムウォーク価格生成
         np.random.seed(42)
-        trend = np.linspace(150, 155, len(dates))
-        noise = np.cumsum(np.random.randn(len(dates)) * 0.1)
-        close_prices = trend + noise
+        price = 150.0
+        prices = []
         
-        data = []
-        for i, date in enumerate(dates):
-            close = close_prices[i]
-            
-            # 意図的にパターンを作成（10%の確率）
-            if np.random.random() < 0.1:
-                # Pin Barパターンを作成
-                if np.random.random() < 0.5:
-                    # Bullish Pin Bar
-                    open_price = close + np.random.uniform(0.05, 0.1)
-                    high = max(open_price, close) + np.random.uniform(0, 0.05)
-                    low = min(open_price, close) - np.random.uniform(0.2, 0.3)
-                else:
-                    # Bearish Pin Bar
-                    open_price = close - np.random.uniform(0.05, 0.1)
-                    high = max(open_price, close) + np.random.uniform(0.2, 0.3)
-                    low = min(open_price, close) - np.random.uniform(0, 0.05)
-            else:
-                # 通常のローソク足
-                open_price = close + np.random.uniform(-0.1, 0.1)
-                high = max(open_price, close) + abs(np.random.uniform(0, 0.2))
-                low = min(open_price, close) - abs(np.random.uniform(0, 0.2))
-            
-            volume = np.random.uniform(1000, 10000)
-            
-            data.append({
-                'datetime': date,
-                'open': open_price,
-                'high': high,
-                'low': low,
-                'close': close,
-                'volume': volume
-            })
+        for _ in range(len(dates)):
+            change = np.random.randn() * 0.5
+            price += change
+            prices.append(price)
         
-        df = pd.DataFrame(data)
-        df.set_index('datetime', inplace=True)
+        # OHLCデータ生成
+        df = pd.DataFrame({
+            'open': prices + np.random.randn(len(dates)) * 0.1,
+            'high': prices + np.abs(np.random.randn(len(dates)) * 0.3),
+            'low': prices - np.abs(np.random.randn(len(dates)) * 0.3),
+            'close': prices,
+            'volume': np.random.randint(1000, 10000, len(dates))
+        }, index=dates)
+        
+        # 論理的整合性の確保
+        df['high'] = df[['open', 'high', 'low', 'close']].max(axis=1)
+        df['low'] = df[['open', 'high', 'low', 'close']].min(axis=1)
+        
         return df
