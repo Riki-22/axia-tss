@@ -237,8 +237,8 @@ class MarketDataProvider:
 ### Week 2: 完成と最適化（2/3-10）
 
 #### Day 6-7: data_collector移行（2/3-4）
-- [ ] mt5_data_collector.py（S3保存込み）
-- [ ] collect_market_data.py ユースケース（簡略版）
+- [ ] mt5_data_collector.py（データ取得のみ）
+- [ ] s3/market_data_repository.py（S3保存処理）
 - [ ] run_data_collector.py CLIランナー
 
 #### Day 8-9: Streamlit連携準備（2/5-6）
@@ -273,13 +273,14 @@ class MarketDataProvider:
 
 | 既存ファイル | 移行先 | 作業 |
 |------------|--------|------|
-| application/data_collector/main.py | → presentation/cli/run_data_collector.py<br>→ infrastructure/gateways/brokers/mt5/mt5_data_collector.py | 分割（S3保存込み） |
+| application/data_collector/main.py | → presentation/cli/run_data_collector.py<br>→ infrastructure/gateways/brokers/mt5/mt5_data_collector.py | 分割（データ取得のみ） |
 | application/data_collector/config_loader_dc.py | → infrastructure/config/mt5_config.py | 移動/統合 |
 
 #### 新規作成
 
 | 新規ファイル | 目的 | Phase |
 |------------|------|-------|
+| infrastructure/persistence/s3/market_data_repository.py | S3への保存処理 | Phase1 |
 | infrastructure/gateways/market_data/market_data_provider.py | データソース統合 | Phase1 |
 | infrastructure/persistence/redis/price_cache.py | Redisキャッシュ | Phase2 |
 | infrastructure/persistence/redis/cache_manager.py | キャッシュ戦略 | Phase2 |
