@@ -53,16 +53,17 @@ src/
 │   │   └── position.py                     # ポジションエンティティ
 │   │
 │   ├── repositories/                        # 🆕 Phase1で作成（インターフェース）
-│   │   ├── base_repository.py              # 基底インターフェース
 │   │   ├── order_repository.py             # 注文リポジトリI/F
-│   │   ├── kill_switch_repository.py       # Kill SwitchリポジトリI/F
-│   │   └── market_data_repository.py       # 市場データリポジトリI/F
+│   │   └── kill_switch_repository.py       # Kill SwitchリポジトリI/F
+│   │   # base_repository.py は任意（共通処理があれば）
 │   │
 │   └── services/
 │       ├── order_validation.py             # ← validators.py 移動
 │       └── technical_indicators/           # ✅ 既に一部実装済み
 │           ├── pattern_detectors/
+│           │   └── candlestick_patterns.py
 │           └── level_detectors/
+│               └── support_resistance.py
 │
 ├── application/                             # ユースケース層
 │   └── use_cases/
@@ -89,7 +90,7 @@ src/
 │   │   │       └── mt5_connection_manager.py  # ⏳ Phase2で実装
 │   │   │
 │   │   ├── market_data/
-│   │   │   ├── data_source_interface.py       # 🆕 統合インターフェース
+│   │   │   ├── market_data_provider.py        # 🆕 統合データプロバイダー
 │   │   │   ├── dummy_generator.py             # ✅ 既に実装済み
 │   │   │   └── yfinance_gateway.py            # ✅ 既に実装済み
 │   │   │
@@ -110,8 +111,9 @@ src/
 │   │   │   └── market_data_repository.py      # ← S3保存ロジック
 │   │   │
 │   │   └── redis/
-│   │       ├── price_cache.py                 # ⏳ Phase2で実装
-│   │       └── proxy_communication.py         # ⏳ Phase2で実装
+│   │       ├── price_cache.py                 # ⏳ Phase2: 価格キャッシュ
+│   │       ├── cache_manager.py               # ⏳ Phase2: キャッシュ戦略
+│   │       └── proxy_communication.py         # ⏳ Phase2: Proxy通信
 │   │
 │   └── di/                                    # 🆕 依存性注入
 │       └── container.py                       # DIコンテナ
@@ -192,7 +194,7 @@ class Order:
 
 **作業内容**:
 - [ ] domain/entities/order.py（シンプルなデータクラス）
-- [ ] domain/repositories/インターフェース定義
+- [ ] domain/repositories/インターフェース定義（order, kill_switch）
 - [ ] infrastructure/config/settings.py（設定統合）
 - [ ] infrastructure/di/container.py（基本実装）
 
@@ -210,11 +212,22 @@ class DynamoDBKillSwitchRepository(IKillSwitchRepository):
 - [ ] Orderリポジトリ（save処理を移動）
 - [ ] domain/services/order_validation.py（validators.py移動）
 
-#### Day 5: MT5ゲートウェイ（1/31）
+#### Day 5: MT5ゲートウェイとデータプロバイダー（1/31）
 **作業内容**:
 - [ ] mt5_connection.py（接続管理）
 - [ ] mt5_order_executor.py（注文実行）
-- [ ] 既存mt5_handler.pyからのロジック分割
+- [ ] mt5_data_collector.py（データ収集＋S3保存）
+- [ ] market_data_provider.py（データソース統合）
+
+```python
+# Phase1: シンプルな実装
+class MarketDataProvider:
+    """データソース統合（キャッシュなし）"""
+    def get_latest_price(self, symbol: str):
+        if self.mt5.is_connected():
+            return self.mt5.get_current_price(symbol)
+        return self.yfinance.get_latest(symbol)
+```
 
 #### Weekend: 統合テスト（2/1-2）
 - [ ] order_manager全体の動作確認
@@ -224,19 +237,20 @@ class DynamoDBKillSwitchRepository(IKillSwitchRepository):
 ### Week 2: 完成と最適化（2/3-10）
 
 #### Day 6-7: data_collector移行（2/3-4）
-- [ ] mt5_data_collector.py
-- [ ] S3リポジトリ実装
-- [ ] collect_market_data.py ユースケース
+- [ ] mt5_data_collector.py（S3保存込み）
+- [ ] collect_market_data.py ユースケース（簡略版）
+- [ ] run_data_collector.py CLIランナー
 
-#### Day 8-9: Streamlit連携（2/5-6）
-- [ ] UIコントローラー実装
-- [ ] 注文パネルとの連携
-- [ ] ポジション表示の統合
+#### Day 8-9: Streamlit連携準備（2/5-6）
+- [ ] MarketDataProviderとStreamlitの統合
+- [ ] チャートコンポーネントの修正
+- [ ] データソース切り替え機能
 
-#### Day 10: 最終調整（2/7-10）
+#### Day 10: Phase2準備（2/7-10）
+- [ ] Redis統合設計
+- [ ] キャッシュ戦略の検討
 - [ ] パフォーマンステスト
 - [ ] ドキュメント整理
-- [ ] 旧ディレクトリ削除
 
 ---
 
@@ -259,8 +273,16 @@ class DynamoDBKillSwitchRepository(IKillSwitchRepository):
 
 | 既存ファイル | 移行先 | 作業 |
 |------------|--------|------|
-| application/data_collector/main.py | → presentation/cli/run_data_collector.py<br>→ infrastructure/gateways/brokers/mt5/mt5_data_collector.py<br>→ infrastructure/persistence/s3/market_data_repository.py | 分割 |
+| application/data_collector/main.py | → presentation/cli/run_data_collector.py<br>→ infrastructure/gateways/brokers/mt5/mt5_data_collector.py | 分割（S3保存込み） |
 | application/data_collector/config_loader_dc.py | → infrastructure/config/mt5_config.py | 移動/統合 |
+
+#### 新規作成
+
+| 新規ファイル | 目的 | Phase |
+|------------|------|-------|
+| infrastructure/gateways/market_data/market_data_provider.py | データソース統合 | Phase1 |
+| infrastructure/persistence/redis/price_cache.py | Redisキャッシュ | Phase2 |
+| infrastructure/persistence/redis/cache_manager.py | キャッシュ戦略 | Phase2 |
 
 #### streamlit関連（Phase2）
 
@@ -290,9 +312,69 @@ Find: from message_processor import
 Replace: from application.use_cases.order_processing.process_sqs_order import
 ```
 
+## 5. データソース戦略
+
+### 5.1 データソース優先順位
+```
+1. Redis（キャッシュ） - Phase2で実装
+   ↓ なければ
+2. MT5（リアルタイム） - メインソース
+   ↓ 接続不可なら
+3. yfinance（フォールバック） - 代替ソース
+   ↓ ネットワーク不可なら
+4. dummy_generator（モック） - 開発/テスト用
+```
+
+### 5.2 Phase1実装（シンプル版）
+```python
+# infrastructure/gateways/market_data/market_data_provider.py
+class MarketDataProvider:
+    """データソース統合（Phase1: キャッシュなし）"""
+    
+    def __init__(self):
+        self.mt5 = MT5DataCollector()
+        self.yfinance = YFinanceGateway()
+        self.dummy = DummyGenerator()
+    
+    def get_latest_price(self, symbol: str) -> float:
+        """最新価格取得"""
+        if self.mt5.is_connected():
+            return self.mt5.get_current_price(symbol)
+        elif self._network_available():
+            return self.yfinance.get_latest(symbol)
+        else:
+            return self.dummy.generate_price(symbol)
+    
+    def get_ohlcv(self, symbol: str, timeframe: str) -> pd.DataFrame:
+        """OHLCV取得"""
+        if self.mt5.is_connected():
+            return self.mt5.get_rates(symbol, timeframe)
+        elif self._network_available():
+            return self.yfinance.fetch_ohlcv(symbol, timeframe)
+        else:
+            return self.dummy.generate_ohlcv(symbol, timeframe)
+```
+
+### 5.3 Phase2実装（Redis統合）
+```python
+# Phase2で追加
+def get_latest_price(self, symbol: str) -> float:
+    # Redisキャッシュ確認
+    cached = self.cache.get_price(symbol)
+    if cached and self._is_fresh(cached):
+        return cached['price']
+    
+    # ソースから取得
+    price = self._fetch_from_source(symbol)
+    
+    # キャッシュ更新
+    self.cache.set_price(symbol, price, ttl=5)
+    return price
+```
+
 ---
 
-## 5. リスク管理と対策
+## 6. リスク管理と対策
 
 ### 5.1 主要リスク
 
@@ -427,7 +509,7 @@ mkdir -p src/infrastructure/persistence/{dynamodb,s3,redis}
 mkdir -p src/infrastructure/gateways/brokers/mt5
 mkdir -p src/infrastructure/gateways/market_data
 mkdir -p src/infrastructure/gateways/messaging/sqs
-mkdir -p src/presentation/{cli,ui/streamlit/{controllers,components/trading_charts,config,layouts,pages,utils,services}}
+mkdir -p src/presentation/{cli,ui/streamlit/{controllers,components/price_charts,config,layouts,pages,utils,services}}
 
 # __init__.py ファイルの作成
 find src -type d -exec touch {}/__init__.py \;
@@ -492,12 +574,30 @@ def test_connections():
 
 ## 10. 完了後のNext Steps
 
+### Phase2（Week 3-4）
+- **Redis統合**: 
+  - price_cache.py実装
+  - cache_manager.py実装
+  - MarketDataProviderへのキャッシュ層追加
+- **Streamlit連携強化**:
+  - controllersパターン導入
+  - 注文パネル統合
+  - データソース選択UI
+- **Position管理**:
+  - positionエンティティ追加
+  - position_repository実装
+
 ### Phase3（将来）
-- Value Objects導入
-- Domain Events実装
-- MT5 Proxyサービス
-- Redis最適化
-- パフォーマンスチューニング
+- **MT5 Proxyサービス**:
+  - 接続競合の根本解決
+  - Redis経由の通信
+- **高度な機能**:
+  - Value Objects導入
+  - Domain Events実装
+  - イベントソーシング
+- **パフォーマンス最適化**:
+  - 非同期処理の強化
+  - バッチ処理の最適化
 
 ### ドキュメント更新
 - README.md
