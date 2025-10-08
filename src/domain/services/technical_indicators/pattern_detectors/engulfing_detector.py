@@ -1,4 +1,4 @@
-# src/domain/technical_indicators/pattern_detectors/engulfing_detector.py
+# src/domain/services/technical_indicators/pattern_detectors/engulfing_detector.py
 
 from typing import List
 import pandas as pd

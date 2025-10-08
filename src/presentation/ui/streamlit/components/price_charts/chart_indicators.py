@@ -16,10 +16,10 @@ sys.path.insert(0, str(project_root))
 
 # ドメイン層のインポート
 try:
-    from src.domain.technical_indicators.pattern_detectors.pinbar_detector import PinBarDetector
-    from src.domain.technical_indicators.pattern_detectors.engulfing_detector import EngulfingDetector
-    from src.domain.technical_indicators.level_detectors.support_resistance import SupportResistanceDetector
-    from src.domain.technical_indicators.level_detectors.trend_channel import TrendChannelDetector
+    from src.domain.services.technical_indicators.pattern_detectors.pinbar_detector import PinBarDetector
+    from src.domain.services.technical_indicators.pattern_detectors.engulfing_detector import EngulfingDetector
+    from src.domain.services.technical_indicators.level_detectors.support_resistance import SupportResistanceDetector
+    from src.domain.services.technical_indicators.level_detectors.trend_channel import TrendChannelDetector
     INDICATORS_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Technical indicators not available: {e}")

@@ -1,4 +1,4 @@
-# src/domain/technical_indicators/level_detectors/trend_channel.py
+# src/domain/services/technical_indicators/level_detectors/trend_channel.py
 
 from typing import List, Dict, Optional, Tuple
 import pandas as pd

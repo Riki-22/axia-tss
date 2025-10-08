@@ -1,4 +1,4 @@
-# src/domain/technical_indicators/pattern_detectors/base_pattern.py
+# src/domain/services/technical_indicators/pattern_detectors/base_pattern.py
 
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional

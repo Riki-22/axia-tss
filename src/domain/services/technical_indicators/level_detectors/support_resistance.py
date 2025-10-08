@@ -1,4 +1,4 @@
-# src/domain/technical_indicators/level_detectors/support_resistance.py
+# src/domain/services/technical_indicators/level_detectors/support_resistance.py
 
 from typing import List, Dict, Tuple
 import pandas as pd
