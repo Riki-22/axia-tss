@@ -1,4 +1,4 @@
-# src/presentation/ui/streamlit/components/price_charts/chart_data_source.py
+# src/presentation/ui/streamlit/components/trading_charts/chart_data_source.py
 
 import streamlit as st
 import pandas as pd

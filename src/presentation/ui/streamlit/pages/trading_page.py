@@ -1,10 +1,10 @@
-# src/presentation/ui/streamlit/pages/chart_page.py
+# src/presentation/ui/streamlit/pages/trading_page.py
 
 import streamlit as st
-from components.price_charts.price_chart import PriceChartComponent
+from components.trading_charts.price_chart import PriceChartComponent
 
 
-def render_chart_page():
+def render_trading_page():
     """チャートページのレンダリング"""
     # チャート設定
     col1, col2, col3 = st.columns([2, 2, 1])

@@ -1,4 +1,4 @@
-# src/presentation/ui/streamlit/components/price_charts/chart_indicators.py
+# src/presentation/ui/streamlit/components/trading_charts/chart_indicators.py
 
 import pandas as pd
 import logging

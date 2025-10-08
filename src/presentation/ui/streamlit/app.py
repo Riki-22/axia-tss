@@ -12,7 +12,7 @@ from services.dynamodb_service import DynamoDBService
 from config import setup_page_config, get_custom_css
 from layouts import render_sidebar, render_header_metrics
 from pages import (
-    render_chart_page,
+    render_trading_page,
     render_position_page,
     render_signal_page,
     render_analysis_page
@@ -49,7 +49,7 @@ def main():
     ])
     
     with chart_tab:
-        render_chart_page()
+        render_trading_page()
     
     with position_tab:
         render_position_page()

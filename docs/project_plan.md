@@ -1,340 +1,510 @@
-# AXIA 実装計画書
+# AXIA 実装計画書 - クリーンアーキテクチャ移行
 
-**作成日**: 2025年10月8日  
-**対象期間**: 2025年10月8日 - 10月31日  
-**目的**: 既存資産を活用したクリーンアーキテクチャへの移行と実データ連携実装
+**作成日**: 2025年1月27日  
+**対象期間**: 2025年1月27日 - 2月10日  
+**目的**: 既存資産を活用したクリーンアーキテクチャへの段階的移行
 
 ---
 
 ## 1. エグゼクティブサマリー
 
-### 1.1 現状
-- **完成済み**: チャート表示、パターン検出（domain/technical_indicators）
-- **課題**: application層に配置されたインフラ寄りのコード（order_manager, data_collector）
-- **制約**: 10/31退職までに転職ポートフォリオとして完成必須
+### 1.1 現状分析
+- ✅ **完成済み**: 
+  - チャート表示UI (Streamlit)
+  - テクニカル指標 (domain/technical_indicators)
+  - マーケットデータゲートウェイ (yfinance, dummy_generator)
+- ⚠️ **課題**: 
+  - application層に配置された基盤コード
+  - DynamoDBアクセスの直接実装
+  - MT5接続の競合問題
+- 🎯 **目標**: 
+  - 2週間でクリーンアーキテクチャへ完全移行
+  - 既存コードの95%は移動のみ（修正最小限）
+  - 常に動作する状態を維持
 
-### 1.2 目標
-- 既存コードを適切な層に再配置（クリーンアーキテクチャ準拠）
-- 実データ連携の実現（MT5/yfinance）
-- UI統合による注文実行機能
-- MT5接続の競合問題解決
-
-### 1.3 基本方針
-- **既存コードの95%は修正せず移動のみ**
-- **インポートパスの修正で対応**
-- **段階的実装で常に動作する状態を維持**
+### 1.2 基本方針
+```
+1. 動作するコードを壊さない
+2. 移動 > 修正（既存ロジックは温存）
+3. テスタビリティの向上
+4. 段階的実装（毎日デプロイ可能）
+```
 
 ---
 
 ## 2. アーキテクチャ設計
 
-### 2.1 レイヤー構成
+### 2.1 レイヤー責務の明確化
 
-```
-┌─────────────────────────────────────────────┐
-│         Presentation Layer (UI/CLI)          │
-├─────────────────────────────────────────────┤
-│        Application Layer (Use Cases)         │
-├─────────────────────────────────────────────┤
-│         Domain Layer (Business Rules)        │
-├─────────────────────────────────────────────┤
-│     Infrastructure Layer (Technical Details) │
-└─────────────────────────────────────────────┘
-```
+| レイヤー | 責務 | 主要コンポーネント |
+|---------|------|-------------------|
+| **Presentation** | ユーザー/外部IF | CLI, Streamlit UI |
+| **Application** | ユースケース | 注文処理、データ収集 |
+| **Domain** | ビジネスルール | エンティティ、バリデーション |
+| **Infrastructure** | 技術的実装 | DB、ブローカー、メッセージング |
 
-### 2.2 最終ディレクトリ構造
+### 2.2 移行後のディレクトリ構造
 
 ```
 src/
-├── domain/                                    # ビジネスルール層
-│   ├── technical_indicators/                  # ✅ 実装済み
-│   │   ├── pattern_detectors/
-│   │   └── level_detectors/
+├── domain/                                   # ビジネスルール層
+│   ├── entities/                            # 🆕 Phase1で作成
+│   │   ├── order.py                        # 注文エンティティ
+│   │   └── position.py                     # ポジションエンティティ
+│   │
+│   ├── repositories/                        # 🆕 Phase1で作成（インターフェース）
+│   │   ├── base_repository.py              # 基底インターフェース
+│   │   ├── order_repository.py             # 注文リポジトリI/F
+│   │   ├── kill_switch_repository.py       # Kill SwitchリポジトリI/F
+│   │   └── market_data_repository.py       # 市場データリポジトリI/F
+│   │
 │   └── services/
-│       └── order_validation.py               # validators.py を移動
+│       ├── order_validation.py             # ← validators.py 移動
+│       └── technical_indicators/           # ✅ 既に一部実装済み
+│           ├── pattern_detectors/
+│           └── level_detectors/
 │
-├── application/                               # ユースケース層
+├── application/                             # ユースケース層
 │   └── use_cases/
 │       ├── order_processing/
-│       │   └── process_sqs_order.py         # message_processor.py を移動
+│       │   └── process_sqs_order.py       # ← message_processor.py 移動
 │       └── data_collection/
-│           └── collect_market_data.py       # data_collector ロジック
+│           └── collect_market_data.py     # ← data_collector ロジック
 │
-├── infrastructure/                            # 技術的実装層
+├── infrastructure/                          # 技術的実装層
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── settings.py                    # 🆕 統合設定
+│   │   ├── aws_config.py                  # ← config_loader.py 移動
+│   │   └── mt5_config.py                  # ← config_loader_dc.py 移動
+│   │
 │   ├── gateways/
 │   │   ├── brokers/
 │   │   │   └── mt5/
-│   │   │       ├── mt5_connection.py            # mt5_handler.py 分割
-│   │   │       ├── mt5_order_executor.py        # mt5_handler.py 分割
-│   │   │       ├── mt5_proxy_service.py         # 新規：Proxy本体
-│   │   │       ├── mt5_proxy_client.py          # 新規：Proxyクライアント
-│   │   │       └── mt5_connection_manager.py    # 新規：接続管理
-│   │   ├── market_data/
-│   │   │   ├── data_source_interface.py         # 新規：統合インターフェース
-│   │   │   ├── dummy_generator.py               # ✅ 実装済み
-│   │   │   ├── mt5_data_gateway.py              # data_collector 分割
-│   │   │   └── yfinance_gateway.py              # ✅ 実装済み
+│   │   │       ├── mt5_connection.py          # ← mt5_handler.py 分割
+│   │   │       ├── mt5_order_executor.py      # ← mt5_handler.py 分割
+│   │   │       ├── mt5_data_collector.py      # ← data_collector/main.py 分割
+│   │   │       ├── mt5_proxy_service.py       # ⏳ Phase2で実装
+│   │   │       ├── mt5_proxy_client.py        # ⏳ Phase2で実装
+│   │   │       └── mt5_connection_manager.py  # ⏳ Phase2で実装
+│   │   │
+│   │   ├── market_data/
+│   │   │   ├── data_source_interface.py       # 🆕 統合インターフェース
+│   │   │   ├── dummy_generator.py             # ✅ 既に実装済み
+│   │   │   └── yfinance_gateway.py            # ✅ 既に実装済み
+│   │   │
 │   │   └── messaging/
 │   │       └── sqs/
-│   │           ├── queue_listener.py            # main.py SQS部分
-│   │           └── order_publisher.py           # 新規：注文送信
+│   │           ├── queue_listener.py          # ← main.py SQS部分
+│   │           └── order_publisher.py         # ⏳ Phase2で実装
 │   │
 │   ├── persistence/
 │   │   ├── dynamodb/
-│   │   │   ├── order_repository.py          # dynamodb_handler.py 分割
-│   │   │   ├── kill_switch_repository.py    # dynamodb_handler.py 分割
-│   │   │   ├── streamlit_repository.py      # dynamodb_service.py 移動
-│   │   │   └── position_repository.py       # 新規
+│   │   │   ├── base_dynamodb_repository.py    # 🆕 共通処理
+│   │   │   ├── order_repository.py            # ← dynamodb_handler.py 分割
+│   │   │   ├── kill_switch_repository.py      # ← dynamodb_handler.py 分割
+│   │   │   ├── streamlit_repository.py        # ⏳ Phase2で移動
+│   │   │   └── position_repository.py         # ⏳ Phase2で実装
+│   │   │
 │   │   ├── s3/
-│   │   │   └── market_data_repository.py    # S3保存ロジック
+│   │   │   └── market_data_repository.py      # ← S3保存ロジック
+│   │   │
 │   │   └── redis/
-│   │       ├── price_cache.py               # 新規：価格キャッシュ
-│   │       └── proxy_communication.py       # 新規：Proxy通信
+│   │       ├── price_cache.py                 # ⏳ Phase2で実装
+│   │       └── proxy_communication.py         # ⏳ Phase2で実装
 │   │
-│   └── config/
-│       ├── settings.py                      # 新規：統合設定
-│       ├── aws_config.py                    # config_loader.py 移動
-│       └── mt5_config.py                    # config_loader_dc.py 移動
+│   └── di/                                    # 🆕 依存性注入
+│       └── container.py                       # DIコンテナ
 │
 └── presentation/                              # UI/CLI層
     ├── cli/
-    │   ├── run_order_processor.py           # main.py エントリー
-    │   ├── run_data_collector.py            # main.py エントリー
-    │   └── run_mt5_proxy.py                 # 新規：Proxy起動
+    │   ├── run_order_processor.py            # ← main.py エントリー
+    │   ├── run_data_collector.py             # ← main.py エントリー
+    │   └── run_mt5_proxy.py                  # ⏳ Phase2で実装
     │
     └── ui/
         └── streamlit/
-            ├── app.py                        
+            ├── app.py                         # メインアプリ
+            │
+            ├── controllers/                   # ⏳ Phase2で追加
+            │   ├── order_controller.py       # UI注文制御
+            │   └── dashboard_controller.py   # ダッシュボード制御
+            │
             ├── components/
-            │   └── price_charts/
-            │       ├── price_chart.py            
-            │       ├── chart_data_source.py      
-            │       ├── chart_indicators.py       
-            │       └── chart_renderer.py         
-            ├── config
-            │   ├── page_config.py
-            │   └── styles.py
-            ├── layouts
-            │   ├── header.py
-            │   └── sidebar.py
-            ├── pages
-            │   ├── analysis_page.py
-            │   ├── chart_page.py
-            │   ├── position_page.py
-            │   └── signal_page.py
-            │── utils
+            │   └── trading_charts/
+            │       ├── price_chart.py
+            │       ├── chart_data_source.py
+            │       ├── chart_indicators.py
+            │       └── chart_renderer.py
+            │
+            ├── config/
+            │   ├── page_config.py
+            │   └── styles.py
+            │
+            ├── layouts/
+            │   ├── header.py
+            │   └── sidebar.py
+            │
+            ├── pages/
+            │   ├── analysis_page.py
+            │   ├── trading_page.py
+            │   ├── position_page.py
+            │   └── signal_page.py
+            │
+            ├── utils/
             │   └── trading_helpers.py
-            └── services/                     # 削除予定
-                └── dynamodb_service.py
-
+            │
+            └── services/                     # ⏳ Phase2で削除予定
+                └── dynamodb_service.py
 ```
+
+**凡例**:
+- ✅ 既に実装済み
+- 🆕 Phase1で新規作成
+- ⏳ Phase2以降で実装
+- ← 既存ファイルからの移動/分割
 
 ---
 
-## 3. 実装計画
+## 3. 実装計画（2週間）
 
-### 3.1 既存ファイルの移動マッピング
+### Week 1: 基盤構築と移行（1/27-2/2）
 
-#### order_manager/ の分解
+#### Day 1-2: ドメイン層とインフラ基盤（1/27-28）
+```python
+# 最小限のエンティティ定義
+@dataclass
+class Order:
+    ticket_id: str
+    symbol: str
+    lot_size: Decimal
+    status: str = 'PENDING'
+    
+    @classmethod
+    def from_sqs_message(cls, payload: dict) -> 'Order':
+        """既存の辞書形式から変換"""
+        return cls(
+            ticket_id=payload['ticket_id'],
+            symbol=payload['symbol'],
+            lot_size=Decimal(str(payload['lot_size']))
+        )
+```
 
-| 既存ファイル | 移動先 | 作業内容 |
-|------------|--------|---------|
-| `main.py` | `infrastructure/messaging/sqs/queue_listener.py`<br>`presentation/cli/run_order_processor.py` | SQS部分とエントリーポイントに分割 |
-| `message_processor.py` | `application/use_cases/order_processing/process_sqs_order.py` | そのまま移動 |
-| `mt5_handler.py` | `infrastructure/brokers/mt5/mt5_connection.py`<br>`infrastructure/brokers/mt5/mt5_order_executor.py` | 接続と実行に分割 |
-| `dynamodb_handler.py` | `infrastructure/persistence/dynamodb/order_repository.py`<br>`infrastructure/persistence/dynamodb/kill_switch_repository.py` | 機能別に分割 |
-| `validators.py` | `domain/services/order_validation.py` | そのまま移動 |
-| `config_loader.py` | `infrastructure/config/aws_config.py` | そのまま移動 |
+**作業内容**:
+- [ ] domain/entities/order.py（シンプルなデータクラス）
+- [ ] domain/repositories/インターフェース定義
+- [ ] infrastructure/config/settings.py（設定統合）
+- [ ] infrastructure/di/container.py（基本実装）
 
-#### data_collector/ の分解
+#### Day 3-4: DynamoDBリポジトリ実装（1/29-30）
+```python
+class DynamoDBKillSwitchRepository(IKillSwitchRepository):
+    """既存のcheck_kill_switch()をラップ"""
+    def is_active(self) -> bool:
+        # 既存ロジックをそのまま使用
+        return existing_check_kill_switch()
+```
 
-| 既存ファイル | 移動先 | 作業内容 |
-|------------|--------|---------|
-| `main.py` | `infrastructure/brokers/mt5/mt5_data_gateway.py`<br>`infrastructure/persistence/s3/market_data_repository.py`<br>`presentation/cli/run_data_collector.py` | 機能別に3分割 |
-| `config_loader_dc.py` | `infrastructure/config/mt5_config.py` | そのまま移動 |
+**作業内容**:
+- [ ] Kill Switchリポジトリ（既存ロジックをラップ）
+- [ ] Orderリポジトリ（save処理を移動）
+- [ ] domain/services/order_validation.py（validators.py移動）
 
-#### streamlit/services/ の移動
+#### Day 5: MT5ゲートウェイ（1/31）
+**作業内容**:
+- [ ] mt5_connection.py（接続管理）
+- [ ] mt5_order_executor.py（注文実行）
+- [ ] 既存mt5_handler.pyからのロジック分割
 
-| 既存ファイル | 移動先 | 作業内容 |
-|------------|--------|---------|
-| `dynamodb_service.py` | `infrastructure/persistence/dynamodb/streamlit_repository.py` | 移動＋クラス名変更 |
+#### Weekend: 統合テスト（2/1-2）
+- [ ] order_manager全体の動作確認
+- [ ] 旧コードとの並行稼働テスト
+- [ ] バグ修正とログ確認
+
+### Week 2: 完成と最適化（2/3-10）
+
+#### Day 6-7: data_collector移行（2/3-4）
+- [ ] mt5_data_collector.py
+- [ ] S3リポジトリ実装
+- [ ] collect_market_data.py ユースケース
+
+#### Day 8-9: Streamlit連携（2/5-6）
+- [ ] UIコントローラー実装
+- [ ] 注文パネルとの連携
+- [ ] ポジション表示の統合
+
+#### Day 10: 最終調整（2/7-10）
+- [ ] パフォーマンステスト
+- [ ] ドキュメント整理
+- [ ] 旧ディレクトリ削除
 
 ---
 
-## 4. 実装スケジュール
+## 4. 移行作業の詳細
 
-### Week 1: 基盤整備（10/8-13）
+### 4.1 ファイル移動マッピング
 
-#### Day 1: 10/8（火）- 構造準備とファイル移動
-```bash
-# 作業時間: 4時間
-09:00-10:00  ディレクトリ構造作成
-10:00-12:00  ファイル移動実行
-13:00-14:00  基本的な動作確認
-```
+#### order_manager/の移動
 
-**実行コマンド**:
-```bash
-# ディレクトリ作成
-mkdir -p src/domain/services
-mkdir -p src/application/use_cases/{order_processing,data_collection}
-mkdir -p src/infrastructure/{brokers/mt5,persistence/{dynamodb,s3,redis}}
-mkdir -p src/infrastructure/{messaging/sqs,config}
-mkdir -p src/presentation/cli
+| 既存ファイル | 移行先 | 作業 |
+|------------|--------|------|
+| application/order_manager/main.py | → presentation/cli/run_order_processor.py<br>→ infrastructure/gateways/messaging/sqs/queue_listener.py | 分割 |
+| application/order_manager/message_processor.py | → application/use_cases/order_processing/process_sqs_order.py | 移動 |
+| application/order_manager/mt5_handler.py | → infrastructure/gateways/brokers/mt5/mt5_connection.py<br>→ infrastructure/gateways/brokers/mt5/mt5_order_executor.py | 分割 |
+| application/order_manager/dynamodb_handler.py | → infrastructure/persistence/dynamodb/order_repository.py<br>→ infrastructure/persistence/dynamodb/kill_switch_repository.py | 分割 |
+| application/order_manager/validators.py | → domain/services/order_validation.py | 移動 |
+| application/order_manager/config_loader.py | → infrastructure/config/aws_config.py | 移動/統合 |
 
-# ファイル移動
-mv src/application/order_manager/validators.py src/domain/services/order_validation.py
-mv src/application/order_manager/message_processor.py src/application/use_cases/order_processing/process_sqs_order.py
-# ... (詳細は実装時に)
-```
+#### data_collector/の移動
 
-#### Day 2: 10/9（水）- インポート修正と接続管理
-```yaml
-09:00-11:00: インポートパス一括修正
-11:00-13:00: MT5ConnectionManager実装
-14:00-16:00: 排他制御のテスト
-```
+| 既存ファイル | 移行先 | 作業 |
+|------------|--------|------|
+| application/data_collector/main.py | → presentation/cli/run_data_collector.py<br>→ infrastructure/gateways/brokers/mt5/mt5_data_collector.py<br>→ infrastructure/persistence/s3/market_data_repository.py | 分割 |
+| application/data_collector/config_loader_dc.py | → infrastructure/config/mt5_config.py | 移動/統合 |
 
-**主要タスク**:
-- VSCodeの一括置換でインポートパス修正
-- MT5接続の排他制御実装
+#### streamlit関連（Phase2）
 
-#### Day 3: 10/10（木）- Redis統合
-```yaml
-09:00-12:00: Redis価格キャッシュ実装
-13:00-16:00: キャッシュ統合テスト
-```
+| 既存ファイル | 状態 | Phase2での作業 |
+|------------|------|---------------|
+| presentation/ui/streamlit/services/dynamodb_service.py | 現状維持 | → infrastructure/persistence/dynamodb/streamlit_repository.py |
+| presentation/ui/streamlit/app.py | 現状維持 | コントローラー統合 |
 
-#### Day 4-5: 10/11-12（金土）- UI統合
-```yaml
-金曜:
-  - order_panel.py実装
-  - SQS連携テスト
-土曜:
-  - position_table.py実装
-  - エンドツーエンドテスト
-```
-
-#### Day 6: 10/13（日）- バッファ
-```yaml
-- バグ修正
-- ドキュメント更新
-- Phase 2準備
-```
-
-### Week 2: MT5 Proxy実装（10/14-20）
-
-#### 10/14-16: Proxyサービス開発
-- `mt5_proxy_service.py` 実装
-- `mt5_proxy_client.py` 実装
-- Redis通信層の実装
-
-#### 10/17-20: 統合とテスト
-- 全プロセスをProxy経由に切り替え
-- パフォーマンステスト
-- 負荷テスト
-
-### Week 3: ポートフォリオ化（10/21-27）
-
-#### 10/21-23: ドキュメント作成
-- README.md完成
-- アーキテクチャ図作成
-- API仕様書
-
-#### 10/24-27: デモ準備
-- デモ動画作成
-- GitHub整理
-- 最終テスト
-
----
-
-## 5. MT5接続管理戦略
-
-### 5.1 Phase 1: 排他制御（今週）
+### 4.2 インポート修正戦略
 
 ```python
-# 簡易的な排他制御
-class MT5ConnectionManager:
-    def acquire_connection(process_name: str) -> bool:
-        # Redisでロック管理
-        pass
+# 旧インポート
+from config_loader import QUEUE_URL, sqs_client
+from message_processor import process_message
+
+# 新インポート（一括置換で対応）
+from infrastructure.config.settings import settings
+from application.use_cases.order_processing.process_sqs_order import ProcessSQSOrderUseCase
 ```
 
-### 5.2 Phase 2: Proxyサービス（来週）
-
+**VSCode一括置換パターン**:
 ```
-┌──────────────┐     Redis      ┌─────────────┐
-│Order Manager │ ←───────────→  │             │
-├──────────────┤                 │  MT5 Proxy  │
-│Data Collector│ ←───────────→  │   Service   │ ←──→ MT5
-├──────────────┤                 │             │
-│ Streamlit UI │ ←───────────→  │             │
-└──────────────┘                 └─────────────┘
+Find: from config_loader import
+Replace: from infrastructure.config.settings import settings\n# from config_loader import
+
+Find: from message_processor import
+Replace: from application.use_cases.order_processing.process_sqs_order import
 ```
 
 ---
 
-## 6. リスク管理
+## 5. リスク管理と対策
 
-### 6.1 識別されたリスク
+### 5.1 主要リスク
 
-| リスク | 影響度 | 発生確率 | 対策 |
-|--------|--------|----------|------|
-| MT5接続競合 | 高 | 高 | Phase 1で排他制御、Phase 2でProxy |
-| インポートエラー | 中 | 中 | 段階的な修正、十分なテスト |
-| 時間不足 | 高 | 中 | 優先順位の明確化、MVP思考 |
-| データ不整合 | 中 | 低 | トランザクション管理、ログ強化 |
+| リスク | 影響 | 対策 |
+|--------|------|------|
+| インポートエラー | 高 | 段階的修正、import文のバックアップ |
+| MT5接続競合 | 高 | Phase1: 排他制御、Phase2: Proxy |
+| DynamoDB不整合 | 中 | 既存ロジックを温存、ラップのみ |
+| テスト不足 | 中 | 各段階で動作確認、ログ強化 |
 
-### 6.2 コンティンジェンシープラン
+### 5.2 ロールバック戦略
 
-1. **MT5接続が不安定な場合**: モックデータでの動作を保証
-2. **リファクタリングで動作しない場合**: 元の構造にロールバック
-3. **時間が不足する場合**: UI機能を優先、Proxy実装は後回し
+```bash
+# バックアップ作成
+cp -r src/application/order_manager src/application/order_manager.backup
+cp -r src/application/data_collector src/application/data_collector.backup
 
----
-
-## 7. 成功指標（KPI）
-
-### 7.1 技術的指標
-- [ ] 全既存テストがパス
-- [ ] エンドツーエンドテスト成功
-- [ ] MT5接続エラー率 < 1%
-- [ ] 平均レスポンス時間 < 500ms
-
-### 7.2 ビジネス指標
-- [ ] デモ可能な状態（10/15まで）
-- [ ] GitHub公開可能（10/25まで）
-- [ ] ポートフォリオ完成（10/31まで）
+# 問題発生時は元に戻す
+mv src/application/order_manager.backup src/application/order_manager
+```
 
 ---
 
-## 8. 作業チェックリスト
+## 6. 成功の判断基準
 
-### Phase 1: ファイル移動（10/8）
-- [ ] ディレクトリ構造作成
-- [ ] order_manager ファイル移動
-- [ ] data_collector ファイル移動
-- [ ] dynamodb_service 移動
+### 6.1 Phase1完了条件（Week1）
+- ✅ order_managerが新構造で動作
+- ✅ SQSメッセージ受信が正常
+- ✅ Kill Switch機能が動作
+- ✅ MT5注文実行が可能
+- ✅ DynamoDB保存が正常
+
+### 6.2 Phase2完了条件（Week2）
+- ✅ data_collectorが移行完了
+- ✅ Streamlit UIから注文可能
+- ✅ すべてのテストがパス
+- ✅ 旧ディレクトリ削除完了
+- ✅ ドキュメント更新完了
+
+---
+
+## 7. 日次チェックリスト
+
+### Day 1 (1/27)
+```markdown
+Morning (4h):
+- [ ] プロジェクト構造作成
+- [ ] domain/entities/order.py
+- [ ] domain/repositories/インターフェース
+
+Afternoon (4h):
+- [ ] infrastructure/config/settings.py
+- [ ] infrastructure/di/container.py
 - [ ] 基本動作確認
 
-### Phase 2: インポート修正（10/9）
-- [ ] order_processing インポート修正
-- [ ] data_collection インポート修正
-- [ ] infrastructure層 インポート修正
-- [ ] presentation層 インポート修正
-- [ ] 単体テスト実行
+完了判定:
+- [ ] 新構造でimportエラーなし
+- [ ] 設定ファイル読み込み成功
+```
 
-### Phase 3: 新機能実装（10/10-13）
-- [ ] MT5ConnectionManager 実装
-- [ ] Redis価格キャッシュ 実装
-- [ ] order_panel.py 実装
-- [ ] position_table.py 実装
-- [ ] 統合テスト
+### Day 2 (1/28)
+```markdown
+Morning (4h):
+- [ ] DynamoDBリポジトリ基底クラス
+- [ ] Kill Switchリポジトリ実装
 
-### Phase 4: Proxy実装（10/14-20）
-- [ ] mt5_proxy_service.py 実装
-- [ ] mt5_proxy_client.py 実装
-- [ ] 全プロセス統合
-- [ ] 負荷テスト
+Afternoon (4h):
+- [ ] Orderリポジトリ実装
+- [ ] リポジトリのテスト
+
+完了判定:
+- [ ] Kill Switch確認が動作
+- [ ] 注文保存が動作
+```
+
+### Day 3 (1/29)
+```markdown
+Morning (4h):
+- [ ] MT5接続クラス実装
+- [ ] MT5注文実行クラス実装
+
+Afternoon (4h):
+- [ ] SQSリスナー実装
+- [ ] ユースケース統合
+
+完了判定:
+- [ ] MT5接続成功
+- [ ] 注文実行テスト成功
+```
+
+### Day 4 (1/30)
+```markdown
+Morning (4h):
+- [ ] ProcessSQSOrderUseCase完成
+- [ ] CLIランナー実装
+
+Afternoon (4h):
+- [ ] エンドツーエンドテスト
+- [ ] ログ確認とデバッグ
+
+完了判定:
+- [ ] order_manager完全動作
+- [ ] 旧版との互換性確認
+```
+
+### Day 5 (1/31)
+```markdown
+Morning (4h):
+- [ ] data_collector分析
+- [ ] MT5データ収集クラス実装
+
+Afternoon (4h):
+- [ ] S3リポジトリ実装
+- [ ] data_collectorテスト
+
+完了判定:
+- [ ] データ収集動作確認
+- [ ] S3保存成功
+```
 
 ---
+
+## 8. コマンドライン作業
+
+### 初期セットアップ
+```bash
+# 完全なディレクトリ構造作成
+mkdir -p src/domain/{entities,repositories,services/technical_indicators/{pattern_detectors,level_detectors}}
+mkdir -p src/application/use_cases/{order_processing,data_collection}
+mkdir -p src/infrastructure/{config,di}
+mkdir -p src/infrastructure/persistence/{dynamodb,s3,redis}
+mkdir -p src/infrastructure/gateways/brokers/mt5
+mkdir -p src/infrastructure/gateways/market_data
+mkdir -p src/infrastructure/gateways/messaging/sqs
+mkdir -p src/presentation/{cli,ui/streamlit/{controllers,components/trading_charts,config,layouts,pages,utils,services}}
+
+# __init__.py ファイルの作成
+find src -type d -exec touch {}/__init__.py \;
+
+# バックアップ作成
+tar -czf backup_$(date +%Y%m%d).tar.gz src/application/order_manager src/application/data_collector
+```
+
+### 移動コマンド（実際のパス）
+```bash
+# Phase1: order_manager移動
+mv src/application/order_manager/validators.py \
+   src/domain/services/order_validation.py
+
+mv src/application/order_manager/message_processor.py \
+   src/application/use_cases/order_processing/process_sqs_order.py
+
+mv src/application/order_manager/config_loader.py \
+   src/infrastructure/config/aws_config.py
+
+# Phase1: data_collector移動  
+mv src/application/data_collector/config_loader_dc.py \
+   src/infrastructure/config/mt5_config.py
+
+# インポート一括修正
+find src -name "*.py" -exec sed -i 's/from validators import/from domain.services.order_validation import/g' {} \;
+find src -name "*.py" -exec sed -i 's/from message_processor import/from application.use_cases.order_processing.process_sqs_order import/g' {} \;
+find src -name "*.py" -exec sed -i 's/from config_loader import/from infrastructure.config.aws_config import/g' {} \;
+```
+
+### テスト実行
+```bash
+# 段階的テスト
+python src/presentation/cli/run_order_processor.py --test-mode
+python -m pytest tests/integration/test_order_flow.py -v
+```
+
+---
+
+## 9. 緊急時対応
+
+### トラブルシューティング
+```python
+# デバッグモード実行
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# 接続テスト
+def test_connections():
+    assert test_dynamodb_connection()
+    assert test_sqs_connection()
+    assert test_mt5_connection()
+```
+
+### ロールバック手順
+1. 現在の変更を退避: `git stash`
+2. バックアップから復元: `tar -xzf backup_YYYYMMDD.tar.gz`
+3. 設定ファイル確認: `.env`ファイルの復元
+4. サービス再起動
+
+---
+
+## 10. 完了後のNext Steps
+
+### Phase3（将来）
+- Value Objects導入
+- Domain Events実装
+- MT5 Proxyサービス
+- Redis最適化
+- パフォーマンスチューニング
+
+### ドキュメント更新
+- README.md
+- API仕様書
+- デプロイメント手順
+- トラブルシューティングガイド
+
+---
+
+**この計画に従い、既存資産を最大限活用しながら、2週間でクリーンアーキテクチャへの移行を完了させます。**
