@@ -49,8 +49,8 @@
 src/
 ├── domain/                                   # ビジネスルール層
 │   ├── entities/                            # 🆕 Phase1で作成
-│   │   ├── order.py                        # 注文エンティティ
-│   │   └── position.py                     # ポジションエンティティ
+│   │   └── order.py                        # 注文エンティティのみ
+│   │   # position.py は Phase2で必要時に追加
 │   │
 │   ├── repositories/                        # 🆕 Phase1で作成（インターフェース）
 │   │   ├── order_repository.py             # 注文リポジトリI/F
@@ -59,11 +59,9 @@ src/
 │   │
 │   └── services/
 │       ├── order_validation.py             # ← validators.py 移動
-│       └── technical_indicators/           # ✅ 既に一部実装済み
+│       └── technical_indicators/           # ✅ 既に実装済み
 │           ├── pattern_detectors/
-│           │   └── candlestick_patterns.py
 │           └── level_detectors/
-│               └── support_resistance.py
 │
 ├── application/                             # ユースケース層
 │   └── use_cases/
@@ -74,7 +72,6 @@ src/
 │
 ├── infrastructure/                          # 技術的実装層
 │   ├── config/
-│   │   ├── __init__.py
 │   │   ├── settings.py                    # 🆕 統合設定
 │   │   ├── aws_config.py                  # ← config_loader.py 移動
 │   │   └── mt5_config.py                  # ← config_loader_dc.py 移動
@@ -85,9 +82,9 @@ src/
 │   │   │       ├── mt5_connection.py          # ← mt5_handler.py 分割
 │   │   │       ├── mt5_order_executor.py      # ← mt5_handler.py 分割
 │   │   │       ├── mt5_data_collector.py      # ← data_collector/main.py 分割
-│   │   │       ├── mt5_proxy_service.py       # ⏳ Phase2で実装
-│   │   │       ├── mt5_proxy_client.py        # ⏳ Phase2で実装
-│   │   │       └── mt5_connection_manager.py  # ⏳ Phase2で実装
+│   │   │       ├── mt5_proxy_service.py       # ⏳ Phase2: Proxyサーバー（接続競合の根本解決）
+│   │   │       ├── mt5_proxy_client.py        # ⏳ Phase2: Proxyクライアント
+│   │   │       └── mt5_connection_manager.py  # ⏳ Phase2: 接続管理（排他制御）
 │   │   │
 │   │   ├── market_data/
 │   │   │   ├── market_data_provider.py        # 🆕 統合データプロバイダー
@@ -104,11 +101,10 @@ src/
 │   │   │   ├── base_dynamodb_repository.py    # 🆕 共通処理
 │   │   │   ├── order_repository.py            # ← dynamodb_handler.py 分割
 │   │   │   ├── kill_switch_repository.py      # ← dynamodb_handler.py 分割
-│   │   │   ├── streamlit_repository.py        # ⏳ Phase2で移動
 │   │   │   └── position_repository.py         # ⏳ Phase2で実装
 │   │   │
 │   │   ├── s3/
-│   │   │   └── market_data_repository.py      # ← S3保存ロジック
+│   │   │   └── market_data_repository.py      # ✅ S3保存を担当
 │   │   │
 │   │   └── redis/
 │   │       ├── price_cache.py                 # ⏳ Phase2: 価格キャッシュ
@@ -289,7 +285,7 @@ class MarketDataProvider:
 
 | 既存ファイル | 状態 | Phase2での作業 |
 |------------|------|---------------|
-| presentation/ui/streamlit/services/dynamodb_service.py | 現状維持 | → infrastructure/persistence/dynamodb/streamlit_repository.py |
+| presentation/ui/streamlit/services/dynamodb_service.py | 現状維持 | → 各リポジトリで対応 |
 | presentation/ui/streamlit/app.py | 現状維持 | コントローラー統合 |
 
 ### 4.2 インポート修正戦略
@@ -504,7 +500,7 @@ Afternoon (4h):
 ```bash
 # 完全なディレクトリ構造作成
 mkdir -p src/domain/{entities,repositories,services/technical_indicators/{pattern_detectors,level_detectors}}
-mkdir -p src/application/use_cases/{order_processing,data_collection}
+mkdir -p src/application/use_cases/order_processing
 mkdir -p src/infrastructure/{config,di}
 mkdir -p src/infrastructure/persistence/{dynamodb,s3,redis}
 mkdir -p src/infrastructure/gateways/brokers/mt5
@@ -588,10 +584,12 @@ def test_connections():
   - positionエンティティ追加
   - position_repository実装
 
-### Phase3（将来）
-- **MT5 Proxyサービス**:
-  - 接続競合の根本解決
-  - Redis経由の通信
+### Phase2（Week 3-4）
+- **MT5 Proxy実装**:
+  - mt5_proxy_service.py（単独プロセス）
+  - mt5_proxy_client.py（各プロセスから利用）
+  - Redis経由の通信実装
+  - 接続競合の根本的解決
 - **高度な機能**:
   - Value Objects導入
   - Domain Events実装
