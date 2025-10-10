@@ -1,7 +1,7 @@
 # AXIA 実装計画書 - クリーンアーキテクチャ移行
 
-**作成日**: 2025年1月27日  
-**対象期間**: 2025年1月27日 - 2月10日  
+**作成日**: 2025年10月11日  
+**対象期間**: 2025年10月11日 - 10月31日  
 **目的**: 既存資産を活用したクリーンアーキテクチャへの段階的移行
 
 ---
@@ -53,9 +53,9 @@ src/
 │   │   # position.py は Phase2で必要時に追加
 │   │
 │   ├── repositories/                        # 🆕 Phase1で作成（インターフェース）
-│   │   ├── order_repository.py             # 注文リポジトリI/F
-│   │   └── kill_switch_repository.py       # Kill SwitchリポジトリI/F
-│   │   # base_repository.py は任意（共通処理があれば）
+│   │   └── i_kill_switch_repository.py     # Kill SwitchリポジトリI/F
+│   │   # order_repositoryのI/Fは必要に応じてPhase2で追加
+│   │   # position_repositoryのI/FはPhase2で追加
 │   │
 │   └── services/
 │       ├── order_validation.py             # ← validators.py 移動
@@ -102,6 +102,7 @@ src/
 │   │   │   ├── order_repository.py            # ← dynamodb_handler.py 分割
 │   │   │   ├── kill_switch_repository.py      # ← dynamodb_handler.py 分割
 │   │   │   └── position_repository.py         # ⏳ Phase2で実装
+│   │   │   # streamlit_repository.py は不要（各リポジトリで対応）
 │   │   │
 │   │   ├── s3/
 │   │   │   └── market_data_repository.py      # ✅ S3保存を担当
@@ -190,7 +191,7 @@ class Order:
 
 **作業内容**:
 - [ ] domain/entities/order.py（シンプルなデータクラス）
-- [ ] domain/repositories/インターフェース定義（order, kill_switch）
+- [ ] domain/repositories/i_kill_switch_repository.py（インターフェース）
 - [ ] infrastructure/config/settings.py（設定統合）
 - [ ] infrastructure/di/container.py（基本実装）
 
@@ -281,12 +282,12 @@ class MarketDataProvider:
 | infrastructure/persistence/redis/price_cache.py | Redisキャッシュ | Phase2 |
 | infrastructure/persistence/redis/cache_manager.py | キャッシュ戦略 | Phase2 |
 
-#### streamlit関連（Phase2）
+#### Streamlit関連（Phase2）
 
 | 既存ファイル | 状態 | Phase2での作業 |
 |------------|------|---------------|
-| presentation/ui/streamlit/services/dynamodb_service.py | 現状維持 | → 各リポジトリで対応 |
-| presentation/ui/streamlit/app.py | 現状維持 | コントローラー統合 |
+| presentation/ui/streamlit/services/dynamodb_service.py | 現状維持 | 削除（各リポジトリで代替） |
+| presentation/ui/streamlit/app.py | 現状維持 | コントローラー/サービス経由でデータ取得 |
 
 ### 4.2 インポート修正戦略
 
@@ -415,7 +416,7 @@ mv src/application/order_manager.backup src/application/order_manager
 
 ## 7. 日次チェックリスト
 
-### Day 1 (1/27)
+### Day 1 (10/11)
 ```markdown
 Morning (4h):
 - [ ] プロジェクト構造作成
@@ -432,7 +433,7 @@ Afternoon (4h):
 - [ ] 設定ファイル読み込み成功
 ```
 
-### Day 2 (1/28)
+### Day 2 (10/12)
 ```markdown
 Morning (4h):
 - [ ] DynamoDBリポジトリ基底クラス
@@ -447,7 +448,7 @@ Afternoon (4h):
 - [ ] 注文保存が動作
 ```
 
-### Day 3 (1/29)
+### Day 3 (10/13)
 ```markdown
 Morning (4h):
 - [ ] MT5接続クラス実装
@@ -462,7 +463,7 @@ Afternoon (4h):
 - [ ] 注文実行テスト成功
 ```
 
-### Day 4 (1/30)
+### Day 4 (10/14)
 ```markdown
 Morning (4h):
 - [ ] ProcessSQSOrderUseCase完成
@@ -477,7 +478,7 @@ Afternoon (4h):
 - [ ] 旧版との互換性確認
 ```
 
-### Day 5 (1/31)
+### Day 5 (0/15)
 ```markdown
 Morning (4h):
 - [ ] data_collector分析
@@ -584,12 +585,10 @@ def test_connections():
   - positionエンティティ追加
   - position_repository実装
 
-### Phase2（Week 3-4）
-- **MT5 Proxy実装**:
-  - mt5_proxy_service.py（単独プロセス）
-  - mt5_proxy_client.py（各プロセスから利用）
-  - Redis経由の通信実装
-  - 接続競合の根本的解決
+### Phase3（将来）
+- **MT5 Proxyサービス**:
+  - 接続競合の根本解決
+  - Redis経由の通信
 - **高度な機能**:
   - Value Objects導入
   - Domain Events実装
