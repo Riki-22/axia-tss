@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
 import boto3

@@ -5,6 +5,7 @@
 import sys
 import logging
 from pathlib import Path
+import boto3
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).parent.parent.parent.parent
@@ -55,7 +56,7 @@ def main():
         # S3リポジトリ作成
         s3_repository = S3MarketDataRepository(
             bucket_name=settings.s3_raw_data_bucket,
-            s3_client=settings.s3_client_dc
+            s3_client=boto3.client('s3', region_name=settings.aws_region)
         )
         
         # ユースケース実行
