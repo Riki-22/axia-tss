@@ -56,6 +56,45 @@ class Settings:
         
         # 設定検証
         self._validate_settings()
+
+        ###### Data Collector設定 ######
+        self.s3_raw_data_bucket = os.getenv('S3_RAW_DATA_BUCKET')
+        
+        # シンボル設定
+        symbols_str = os.getenv('DATA_COLLECTION_SYMBOLS', 'USDJPY,EURUSD')
+        self.data_collection_symbols = [
+            symbol.strip().upper() 
+            for symbol in symbols_str.split(',') 
+            if symbol.strip()
+        ]
+        
+        # タイムフレーム設定
+        self.timeframe_map = {
+            "M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5, 
+            "M15": mt5.TIMEFRAME_M15, "M30": mt5.TIMEFRAME_M30,
+            "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4,
+            "D1": mt5.TIMEFRAME_D1, "W1": mt5.TIMEFRAME_W1, 
+            "MN1": mt5.TIMEFRAME_MN1
+        }
+        
+        timeframes_str = os.getenv('DATA_COLLECTION_TIMEFRAMES', 'H1,D1')
+        self.data_collection_timeframes = [
+            self.timeframe_map[tf.strip().upper()]
+            for tf in timeframes_str.split(',')
+            if tf.strip().upper() in self.timeframe_map
+        ]
+        
+        # 取得件数設定
+        fetch_counts_json = os.getenv('DATA_FETCH_COUNTS_JSON')
+        if fetch_counts_json:
+            try:
+                self.data_fetch_counts = json.loads(fetch_counts_json)
+            except json.JSONDecodeError:
+                logger.error("DATA_FETCH_COUNTS_JSON が無効なJSON形式です")
+                self.data_fetch_counts = {"DEFAULT": 1000}
+        else:
+            self.data_fetch_counts = {"DEFAULT": 1000}
+        ################################
     
     def _init_aws_clients(self):
         """AWSクライアント初期化"""
