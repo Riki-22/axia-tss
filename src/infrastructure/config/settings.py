@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import boto3
 from dotenv import load_dotenv
+import MetaTrader5 as mt5
 
 # ロガー設定
 logging.basicConfig(
@@ -125,54 +126,52 @@ class Settings:
         if missing_configs:
             logger.warning(f"設定値が不足しています: {', '.join(missing_configs)}")
     
-# src/infrastructure/config/settings.py の get_mt5_credentials() メソッドを修正
-
-def get_mt5_credentials(self) -> Dict[str, Any]:
-    """MT5認証情報を取得"""
-    
-    # Secrets Manager優先
-    if self.mt5_secret_name and self.secretsmanager_client:
-        try:
-            logger.info(f"Secrets Manager からシークレット '{self.mt5_secret_name}' を取得します...")
-            
-            get_secret_value_response = self.secretsmanager_client.get_secret_value(
-                SecretId=self.mt5_secret_name
-            )
-            
-            if 'SecretString' in get_secret_value_response:
-                import json
-                secret = json.loads(get_secret_value_response['SecretString'])
+    def get_mt5_credentials(self) -> Dict[str, Any]:
+        """MT5認証情報を取得"""
+        
+        # Secrets Manager優先
+        if self.mt5_secret_name and self.secretsmanager_client:
+            try:
+                logger.info(f"Secrets Manager からシークレット '{self.mt5_secret_name}' を取得します...")
                 
-                # 必須キーの確認
-                if 'mt5_login' in secret and 'mt5_password' in secret and 'mt5_server' in secret:
-                    logger.info("MT5認証情報の取得成功。")
-                    logger.info(f"  Login: {secret.get('mt5_login')}")
-                    logger.info(f"  Server: {secret.get('mt5_server')}")
-                    return secret
+                get_secret_value_response = self.secretsmanager_client.get_secret_value(
+                    SecretId=self.mt5_secret_name
+                )
+                
+                if 'SecretString' in get_secret_value_response:
+                    import json
+                    secret = json.loads(get_secret_value_response['SecretString'])
+                    
+                    # 必須キーの確認
+                    if 'mt5_login' in secret and 'mt5_password' in secret and 'mt5_server' in secret:
+                        logger.info("MT5認証情報の取得成功。")
+                        logger.info(f"  Login: {secret.get('mt5_login')}")
+                        logger.info(f"  Server: {secret.get('mt5_server')}")
+                        return secret
+                    else:
+                        logger.error("シークレット内に必要なキー (mt5_login, mt5_password, mt5_server) が見つかりません。")
                 else:
-                    logger.error("シークレット内に必要なキー (mt5_login, mt5_password, mt5_server) が見つかりません。")
-            else:
-                logger.error("取得したシークレットは SecretString ではありません。")
-                
-        except Exception as e:
-            logger.error(f"Secrets Managerからのシークレット取得中にエラー: {e}", exc_info=True)
-    else:
-        if not self.mt5_secret_name:
-            logger.warning("MT5_SECRET_NAME が設定されていません。")
-        if not self.secretsmanager_client:
-            logger.error("SecretsManagerクライアントが初期化されていません。")
-    
-    # フォールバック：環境変数から取得
-    if self.mt5_login and self.mt5_password and self.mt5_server:
-        logger.info("環境変数からMT5認証情報を使用します（Secrets Manager取得失敗のため）")
-        return {
-            'mt5_login': self.mt5_login,
-            'mt5_password': self.mt5_password,
-            'mt5_server': self.mt5_server
-        }
-    
-    logger.error("MT5認証情報が Secrets Manager にも環境変数にも見つかりません")
-    return {}
+                    logger.error("取得したシークレットは SecretString ではありません。")
+                    
+            except Exception as e:
+                logger.error(f"Secrets Managerからのシークレット取得中にエラー: {e}", exc_info=True)
+        else:
+            if not self.mt5_secret_name:
+                logger.warning("MT5_SECRET_NAME が設定されていません。")
+            if not self.secretsmanager_client:
+                logger.error("SecretsManagerクライアントが初期化されていません。")
+        
+        # フォールバック：環境変数から取得
+        if self.mt5_login and self.mt5_password and self.mt5_server:
+            logger.info("環境変数からMT5認証情報を使用します（Secrets Manager取得失敗のため）")
+            return {
+                'mt5_login': self.mt5_login,
+                'mt5_password': self.mt5_password,
+                'mt5_server': self.mt5_server
+            }
+        
+        logger.error("MT5認証情報が Secrets Manager にも環境変数にも見つかりません")
+        return {}
 
 # シングルトンインスタンス
 settings = Settings()
