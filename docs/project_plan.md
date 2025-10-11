@@ -507,7 +507,7 @@ mkdir -p src/infrastructure/persistence/{dynamodb,s3,redis}
 mkdir -p src/infrastructure/gateways/brokers/mt5
 mkdir -p src/infrastructure/gateways/market_data
 mkdir -p src/infrastructure/gateways/messaging/sqs
-mkdir -p src/presentation/{cli,ui/streamlit/{controllers,components/price_charts,config,layouts,pages,utils,services}}
+mkdir -p src/presentation/{cli,ui/streamlit/{controllers,components/trading_charts,config,layouts,pages,utils,services}}
 
 # __init__.py ファイルの作成
 find src -type d -exec touch {}/__init__.py \;
