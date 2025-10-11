@@ -1,0 +1,10 @@
+{
+  "ticket_id": "LOCAL_TEST_002",
+  "symbol": "EURUSD",
+  "lot_size": 0.01,
+  "order_type": "MARKET",
+  "order_action": "SELL",
+  "tp_price": 1.0500,
+  "sl_price": 1.0600,
+  "comment": "API Test with TP/SL"
+}

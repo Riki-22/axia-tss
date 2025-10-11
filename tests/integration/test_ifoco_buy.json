@@ -1,0 +1,11 @@
+{
+  "ticket_id": "LOCAL_TEST_003",
+  "symbol": "GBPJPY",
+  "lot_size": 0.02,
+  "order_type": "IFOCO",
+  "order_action": "BUY",
+  "entry_price": 195.00,
+  "tp_price": 196.00,
+  "sl_price": 194.50,
+  "comment": "IFOCO Test Order"
+}

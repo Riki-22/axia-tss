@@ -1,0 +1,8 @@
+{
+  "ticket_id": "LOCAL_TEST_001",
+  "symbol": "USDJPY",
+  "lot_size": 0.01,
+  "order_type": "MARKET",
+  "order_action": "BUY",
+  "comment": "API Gateway Test Buy"
+}

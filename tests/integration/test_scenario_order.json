@@ -1,0 +1,18 @@
+{
+  "ticket_id": "LOCAL_TEST_004",
+  "symbol": "EURJPY",
+  "lot_size": 0.01,
+  "order_type": "MARKET",
+  "order_action": "BUY",
+  "tp_price": 165.00,
+  "sl_price": 163.00,
+  "is_scenario_order": true,
+  "scenario_id_ref": "SCENARIO_001",
+  "enable_breakeven": true,
+  "breakeven_trigger_price_target": 164.50,
+  "breakeven_sl_target_price": 164.00,
+  "enable_trailing_stop": true,
+  "trailing_start_price_target": 164.80,
+  "trailing_step_pips": 10,
+  "comment": "Advanced Scenario"
+}
