@@ -53,7 +53,7 @@ src/
 │   │   # position.py は Phase2で必要時に追加
 │   │
 │   ├── repositories/                        # 🆕 Phase1で作成（インターフェース）
-│   │   └── i_kill_switch_repository.py     # Kill SwitchリポジトリI/F
+│   │   └── kill_switch_repository.py     # Kill SwitchリポジトリI/F
 │   │   # order_repositoryのI/Fは必要に応じてPhase2で追加
 │   │   # position_repositoryのI/FはPhase2で追加
 │   │
