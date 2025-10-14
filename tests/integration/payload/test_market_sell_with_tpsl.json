@@ -6,6 +6,6 @@
   "order_type": "MARKET",
   "order_action": "SELL",
   "tp_price": 1.0500,
-  "sl_price": 1.0600,
+  "sl_price": 1.1600,
   "comment": "API Test with TP/SL"
 }

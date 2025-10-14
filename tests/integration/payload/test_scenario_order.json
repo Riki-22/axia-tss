@@ -5,7 +5,7 @@
   "lot_size": 0.01,
   "order_type": "MARKET",
   "order_action": "BUY",
-  "tp_price": 165.00,
+  "tp_price": 177.00,
   "sl_price": 163.00,
   "is_scenario_order": true,
   "scenario_id_ref": "SCENARIO_001",
