@@ -1,250 +1,81 @@
 # src/infrastructure/config/settings.py
-import os
-import json
+"""統合設定クラス - 後方互換性を維持"""
+
 import logging
-import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
-import boto3
-from dotenv import load_dotenv
+from typing import Optional
 
-# MT5は条件付きインポート
-try:
-    import MetaTrader5 as mt5
-    MT5_AVAILABLE = True
-except ImportError:
-    mt5 = None
-    MT5_AVAILABLE = False
-    # 警告は環境変数で制御
-    import os
-    if os.getenv('DEBUG', '').lower() == 'true':
-        logging.warning("MetaTrader5 module not available. MT5 features will be disabled.")
+from .aws_config import AWSConfig
+from .mt5_config import MT5Config
+from .redis_config import RedisConfig
+from .data_collector_config import DataCollectorConfig
 
-# ロガー設定
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 class Settings:
     """統合設定クラス"""
     
     def __init__(self, env_path: Optional[Path] = None):
-        # .envファイルの読み込み
-        if env_path is None:
-            # 複数の場所から.envを探す
-            possible_paths = [
-                Path(__file__).parent / '.env',
-                Path(__file__).parent.parent.parent.parent / '.env',  # プロジェクトルート
-                Path.cwd() / '.env'
-            ]
-            for path in possible_paths:
-                if path.exists():
-                    env_path = path
-                    break
-        
-        if env_path and env_path.exists():
-            load_dotenv(env_path)
-            logger.info(f".env ファイル ({env_path}) を読み込みました。")
-        else:
-            logger.warning(".env ファイルが見つかりません。環境変数から設定を読み取ります。")
+        """
+        Args:
+            env_path: .envファイルのパス
+        """
+        logger.info("設定を初期化中...")
         
         # AWS設定
-        self.aws_region = os.getenv('AWS_REGION', 'ap-northeast-1')
-        self.queue_url = os.getenv('SQS_QUEUE_URL')
-        self.dynamodb_table_name = os.getenv('DYNAMODB_STATE_TABLE_NAME')
-        self.mt5_secret_name = os.getenv('MT5_SECRET_NAME')
+        self.aws = AWSConfig()
         
-        # MT5設定
-        self.mt5_terminal_path = os.getenv('MT5_TERMINAL_PATH')
-        self.mt5_magic_number = int(os.getenv('MT5_MAGIC_NUMBER', '12345'))
+        # MT5設定（AWSのSecretsManagerクライアントを渡す）
+        self.mt5 = MT5Config(secretsmanager_client=self.aws.secretsmanager_client)
         
-        # ローカルMT5認証情報（開発用）
-        self.mt5_login = os.getenv('MT5_LOGIN')
-        self.mt5_password = os.getenv('MT5_PASSWORD')
-        self.mt5_server = os.getenv('MT5_SERVER')
+        # Redis設定
+        self.redis = RedisConfig()
         
-        # AWSクライアント初期化
-        self._init_aws_clients()
+        # Data Collector設定（MT5のtimeframe_mapを渡す）
+        self.data_collector = DataCollectorConfig(timeframe_map=self.mt5.timeframe_map)
         
-        # 設定検証
-        self._validate_settings()
-
-        ###### Data Collector設定 ######
-        self.s3_raw_data_bucket = os.getenv('S3_RAW_DATA_BUCKET')
+        # 後方互換性のため、全ての属性をフラットにコピー
+        self._flatten_configs()
         
-        # シンボル設定
-        symbols_str = os.getenv('DATA_COLLECTION_SYMBOLS', 'USDJPY,EURUSD')
-        self.data_collection_symbols = [
-            symbol.strip().upper() 
-            for symbol in symbols_str.split(',') 
-            if symbol.strip()
-        ]
-        
-        # タイムフレーム設定
-        # MT5時間足マッピング（MT5が利用可能な場合のみ）
-        if MT5_AVAILABLE and mt5:
-            self.timeframe_map = {
-                "M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5,
-                "M15": mt5.TIMEFRAME_M15, "M30": mt5.TIMEFRAME_M30,
-                "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4,
-                "D1": mt5.TIMEFRAME_D1, "W1": mt5.TIMEFRAME_W1,
-                "MN1": mt5.TIMEFRAME_MN1
-            }
-        else:
-            # ダミー値（開発環境用）
-            self.timeframe_map = {
-                "M1": 1, "M5": 5, "M15": 15, "M30": 30,
-                "H1": 60, "H4": 240, "D1": 1440, "W1": 10080,
-                "MN1": 43200
-            }
-        
-        timeframes_str = os.getenv('DATA_COLLECTION_TIMEFRAMES', 'H1,D1')
-        self.data_collection_timeframes = [
-            self.timeframe_map[tf.strip().upper()]
-            for tf in timeframes_str.split(',')
-            if tf.strip().upper() in self.timeframe_map
-        ]
-        
-        # 取得件数設定
-        fetch_counts_json = os.getenv('DATA_FETCH_COUNTS_JSON')
-        if fetch_counts_json:
-            try:
-                self.data_fetch_counts = json.loads(fetch_counts_json)
-            except json.JSONDecodeError:
-                logger.error("DATA_FETCH_COUNTS_JSON が無効なJSON形式です")
-                self.data_fetch_counts = {"DEFAULT": 1000}
-        else:
-            self.data_fetch_counts = {"DEFAULT": 1000}
-        ################################
+        logger.info("設定の初期化が完了しました")
     
-    def _init_aws_clients(self):
-        """AWS クライアント初期化"""
-        try:
-            # 環境判定
-            if os.getenv('ENV') == 'ec2':
-                # EC2環境 - IAMロール使用
-                logger.info("Using EC2 IAM Role for AWS authentication")
-                self.dynamodb_resource = boto3.resource(
-                    'dynamodb', 
-                    region_name=self.aws_region
-                )
-                self.sqs_client = boto3.client(
-                    'sqs', 
-                    region_name=self.aws_region
-                )
-                self.secretsmanager_client = boto3.client(
-                    'secretsmanager',
-                    region_name=self.aws_region
-                )
-                
-            elif os.getenv('AWS_PROFILE'):
-                # ローカル開発 - プロファイル使用
-                profile_name = os.getenv('AWS_PROFILE')
-                logger.info(f"Using AWS Profile: {profile_name}")
-                session = boto3.Session(profile_name=profile_name)
-                self.dynamodb_resource = session.resource(
-                    'dynamodb', 
-                    region_name=self.aws_region
-                )
-                self.sqs_client = session.client(
-                    'sqs', 
-                    region_name=self.aws_region
-                )
-                self.secretsmanager_client = session.client(
-                    'secretsmanager',
-                    region_name=self.aws_region
-                )
-                
-            else:
-                # デフォルト認証チェーン
-                logger.info("Using default AWS credential chain")
-                self.dynamodb_resource = boto3.resource(
-                    'dynamodb', 
-                    region_name=self.aws_region
-                )
-                self.sqs_client = boto3.client(
-                    'sqs', 
-                    region_name=self.aws_region
-                )
-                self.secretsmanager_client = boto3.client(
-                    'secretsmanager',
-                    region_name=self.aws_region
-                )
-                
-            # 接続テスト（オプション）
-            self.dynamodb_resource.meta.client.list_tables(Limit=1)
-            logger.info("AWS clients initialized successfully")
+    def _flatten_configs(self):
+        """後方互換性のため、全ての設定を直接アクセス可能にする"""
+        # AWS
+        self.aws_region = self.aws.aws_region
+        self.queue_url = self.aws.queue_url
+        self.dynamodb_table_name = self.aws.dynamodb_table_name
+        self.s3_raw_data_bucket = self.aws.s3_raw_data_bucket
+        self.dynamodb_resource = self.aws.dynamodb_resource
+        self.sqs_client = self.aws.sqs_client
+        self.secretsmanager_client = self.aws.secretsmanager_client
+        self.s3_client = self.aws.s3_client
         
-        except Exception as e:
-            logger.error(f"AWS client initialization failed: {e}")
-            # エラー時はNoneを設定
-            self.dynamodb_resource = None
-            self.sqs_client = None
-            self.secretsmanager_client = None
-
-    def _validate_settings(self):
-        """必須設定値の検証"""
-        missing_configs = []
-        if not self.queue_url: 
-            missing_configs.append("SQS_QUEUE_URL")
-        if not self.mt5_secret_name and not self.mt5_login: 
-            missing_configs.append("MT5_SECRET_NAME or MT5_LOGIN")
-        if not self.dynamodb_table_name: 
-            missing_configs.append("DYNAMODB_STATE_TABLE_NAME")
-        if not self.mt5_terminal_path: 
-            missing_configs.append("MT5_TERMINAL_PATH")
+        # MT5
+        self.mt5_terminal_path = self.mt5.mt5_terminal_path
+        self.mt5_magic_number = self.mt5.mt5_magic_number
+        self.mt5_secret_name = self.mt5.mt5_secret_name
+        self.mt5_login = self.mt5.mt5_login
+        self.mt5_password = self.mt5.mt5_password
+        self.mt5_server = self.mt5.mt5_server
+        self.timeframe_map = self.mt5.timeframe_map
         
-        if missing_configs:
-            logger.warning(f"設定値が不足しています: {', '.join(missing_configs)}")
+        # Redis
+        self.redis_endpoint = self.redis.redis_endpoint
+        self.redis_port = self.redis.redis_port
+        self.redis_db = self.redis.redis_db
+        self.redis_ttl_hours = self.redis.redis_ttl_hours
+        self.redis_max_memory_mb = self.redis.redis_max_memory_mb
+        self.redis_client = self.redis.redis_client
+        
+        # Data Collector
+        self.data_collection_symbols = self.data_collector.data_collection_symbols
+        self.data_collection_timeframes = self.data_collector.data_collection_timeframes
+        self.data_fetch_counts = self.data_collector.data_fetch_counts
     
-    def get_mt5_credentials(self) -> Dict[str, Any]:
-        """MT5認証情報を取得"""
-        
-        # Secrets Manager優先
-        if self.mt5_secret_name and self.secretsmanager_client:
-            try:
-                logger.info(f"Secrets Manager からシークレット '{self.mt5_secret_name}' を取得します...")
-                
-                get_secret_value_response = self.secretsmanager_client.get_secret_value(
-                    SecretId=self.mt5_secret_name
-                )
-                
-                if 'SecretString' in get_secret_value_response:
-                    import json
-                    secret = json.loads(get_secret_value_response['SecretString'])
-                    
-                    # 必須キーの確認
-                    if 'mt5_login' in secret and 'mt5_password' in secret and 'mt5_server' in secret:
-                        logger.info("MT5認証情報の取得成功。")
-                        logger.info(f"  Login: {secret.get('mt5_login')}")
-                        logger.info(f"  Server: {secret.get('mt5_server')}")
-                        return secret
-                    else:
-                        logger.error("シークレット内に必要なキー (mt5_login, mt5_password, mt5_server) が見つかりません。")
-                else:
-                    logger.error("取得したシークレットは SecretString ではありません。")
-                    
-            except Exception as e:
-                logger.error(f"Secrets Managerからのシークレット取得中にエラー: {e}", exc_info=True)
-        else:
-            if not self.mt5_secret_name:
-                logger.warning("MT5_SECRET_NAME が設定されていません。")
-            if not self.secretsmanager_client:
-                logger.error("SecretsManagerクライアントが初期化されていません。")
-        
-        # フォールバック：環境変数から取得
-        if self.mt5_login and self.mt5_password and self.mt5_server:
-            logger.info("環境変数からMT5認証情報を使用します（Secrets Manager取得失敗のため）")
-            return {
-                'mt5_login': self.mt5_login,
-                'mt5_password': self.mt5_password,
-                'mt5_server': self.mt5_server
-            }
-        
-        logger.error("MT5認証情報が Secrets Manager にも環境変数にも見つかりません")
-        return {}
+    def get_mt5_credentials(self):
+        """MT5認証情報を取得（後方互換性）"""
+        return self.mt5.get_mt5_credentials()
 
 # シングルトンインスタンス
 settings = Settings()
