@@ -5,9 +5,20 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
-import MetaTrader5 as mt5
 from src.domain.entities.order import Order
 from src.domain.repositories.order_repository import IOrderRepository
+
+# MT5は条件付きインポート
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+    # 警告は環境変数で制御
+    import os
+    if os.getenv('DEBUG', '').lower() == 'true':
+        logging.warning("MetaTrader5 module not available. MT5 features will be disabled.")
 
 logger = logging.getLogger(__name__)
 

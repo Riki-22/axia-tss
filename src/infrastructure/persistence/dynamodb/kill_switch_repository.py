@@ -1,6 +1,7 @@
 # src/infrastructure/persistence/dynamodb/kill_switch_repository.py
 import logging
-from typing import Optional
+from typing import Optional, Dict
+from datetime import datetime
 from src.domain.repositories.kill_switch_repository import IKillSwitchRepository
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,9 @@ class DynamoDBKillSwitchRepository(IKillSwitchRepository):
             self.table.put_item(Item={
                 'pk': 'GLOBALCONFIG',
                 'sk': 'SETTING#KILL_SWITCH',
-                'status': 'ON'
+                'status': 'ON',
+                'last_updated_utc': datetime.utcnow().isoformat(),
+                'item_type': 'GlobalSetting'
             })
             return True
         except Exception as e:
@@ -69,10 +72,74 @@ class DynamoDBKillSwitchRepository(IKillSwitchRepository):
         try:
             self.table.put_item(Item={
                 'pk': 'GLOBALCONFIG',
-                'sk': 'SETTING#KILL_SWITCH', 
-                'status': 'OFF'
+                'sk': 'SETTING#KILL_SWITCH',
+                'status': 'OFF',
+                'last_updated_utc': datetime.utcnow().isoformat(),
+                'item_type': 'GlobalSetting'
             })
             return True
         except Exception as e:
             logger.error(f"Kill Switch無効化エラー: {e}")
+            return False
+    
+    def get_status_detail(self) -> Dict:
+        """Kill Switch詳細情報を取得（Streamlit UI用）"""
+        try:
+            if not self.table:
+                return {
+                    'active': False,
+                    'status': 'ERROR',
+                    'last_updated': 'N/A',
+                    'error': 'Table not initialized'
+                }
+            
+            response = self.table.get_item(
+                Key={'pk': 'GLOBALCONFIG', 'sk': 'SETTING#KILL_SWITCH'}
+            )
+            
+            if 'Item' in response:
+                item = response['Item']
+                return {
+                    'active': item.get('status') == 'ON',
+                    'status': item.get('status', 'OFF'),
+                    'last_updated': item.get('last_updated_utc', 'N/A'),
+                    'reason': item.get('reason'),
+                    'updated_by': item.get('updated_by')
+                }
+            
+            return {
+                'active': False,
+                'status': 'OFF',
+                'last_updated': 'N/A',
+                'reason': None,
+                'updated_by': None
+            }
+        except Exception as e:
+            logger.error(f"Kill Switch詳細取得エラー: {e}")
+            return {
+                'active': False,
+                'status': 'ERROR',
+                'error': str(e)
+            }
+    
+    def set_with_details(self, status: str, reason: Optional[str] = None, updated_by: Optional[str] = None) -> bool:
+        """詳細情報付きでKill Switchを更新"""
+        try:
+            if not self.table:
+                logger.error("Table not initialized")
+                return False
+                
+            self.table.put_item(Item={
+                'pk': 'GLOBALCONFIG',
+                'sk': 'SETTING#KILL_SWITCH',
+                'status': status.upper(),
+                'last_updated_utc': datetime.utcnow().isoformat(),
+                'reason': reason,
+                'updated_by': updated_by or 'streamlit_ui',
+                'item_type': 'GlobalSetting'
+            })
+            logger.info(f"Kill Switch更新: {status.upper()}")
+            return True
+        except Exception as e:
+            logger.error(f"Kill Switch更新エラー: {e}")
             return False
