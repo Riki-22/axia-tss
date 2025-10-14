@@ -128,11 +128,11 @@ class Settings:
                 logger.info("Using EC2 IAM Role for AWS authentication")
                 self.dynamodb_resource = boto3.resource(
                     'dynamodb', 
-                    region_name=self.region
+                    region_name=self.aws_region
                 )
                 self.sqs_client = boto3.client(
                     'sqs', 
-                    region_name=self.region
+                    region_name=self.aws_region
                 )
                 
             elif os.getenv('AWS_PROFILE'):
@@ -142,11 +142,11 @@ class Settings:
                 session = boto3.Session(profile_name=profile_name)
                 self.dynamodb_resource = session.resource(
                     'dynamodb', 
-                    region_name=self.region
+                    region_name=self.aws_region
                 )
                 self.sqs_client = session.client(
                     'sqs', 
-                    region_name=self.region
+                    region_name=self.aws_region
                 )
                 
             else:
@@ -157,11 +157,11 @@ class Settings:
                 logger.info("Using default AWS credential chain")
                 self.dynamodb_resource = boto3.resource(
                     'dynamodb', 
-                    region_name=self.region
+                    region_name=self.aws_region
                 )
                 self.sqs_client = boto3.client(
                     'sqs', 
-                    region_name=self.region
+                    region_name=self.aws_region
                 )
                 
             # 接続テスト
