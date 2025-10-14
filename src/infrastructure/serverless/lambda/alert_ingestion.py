@@ -1,4 +1,4 @@
-# src/infrastructure/serverless/lambda/lambda_function.py
+# src/infrastructure/serverless/lambda/alert_ingestion.py
 
 import json
 import os
