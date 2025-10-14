@@ -120,7 +120,7 @@ class Settings:
         ################################
     
     def _init_aws_clients(self):
-        """AWSクライアント初期化"""
+        """AWS クライアント初期化"""
         try:
             # 環境判定
             if os.getenv('ENV') == 'ec2':
@@ -128,11 +128,15 @@ class Settings:
                 logger.info("Using EC2 IAM Role for AWS authentication")
                 self.dynamodb_resource = boto3.resource(
                     'dynamodb', 
-                    region_name=self.aws_region
+                    region_name=self.region
                 )
                 self.sqs_client = boto3.client(
                     'sqs', 
-                    region_name=self.aws_region
+                    region_name=self.region
+                )
+                self.secretsmanager_client = boto3.client(
+                    'secretsmanager',
+                    region_name=self.region
                 )
                 
             elif os.getenv('AWS_PROFILE'):
@@ -142,37 +146,44 @@ class Settings:
                 session = boto3.Session(profile_name=profile_name)
                 self.dynamodb_resource = session.resource(
                     'dynamodb', 
-                    region_name=self.aws_region
+                    region_name=self.region
                 )
                 self.sqs_client = session.client(
                     'sqs', 
-                    region_name=self.aws_region
+                    region_name=self.region
+                )
+                self.secretsmanager_client = session.client(
+                    'secretsmanager',
+                    region_name=self.region
                 )
                 
             else:
                 # デフォルト認証チェーン
-                # 1. 環境変数 (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-                # 2. ~/.aws/credentials のdefaultプロファイル
-                # 3. EC2インスタンスロール
                 logger.info("Using default AWS credential chain")
                 self.dynamodb_resource = boto3.resource(
                     'dynamodb', 
-                    region_name=self.aws_region
+                    region_name=self.region
                 )
                 self.sqs_client = boto3.client(
                     'sqs', 
-                    region_name=self.aws_region
+                    region_name=self.region
+                )
+                self.secretsmanager_client = boto3.client(
+                    'secretsmanager',
+                    region_name=self.region
                 )
                 
-            # 接続テスト
+            # 接続テスト（オプション）
             self.dynamodb_resource.meta.client.list_tables(Limit=1)
             logger.info("AWS clients initialized successfully")
-            
+        
         except Exception as e:
             logger.error(f"AWS client initialization failed: {e}")
+            # エラー時はNoneを設定
             self.dynamodb_resource = None
             self.sqs_client = None
-    
+            self.secretsmanager_client = None
+
     def _validate_settings(self):
         """必須設定値の検証"""
         missing_configs = []
