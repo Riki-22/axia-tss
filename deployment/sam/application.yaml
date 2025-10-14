@@ -1,13 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  AXIA Trading Strategy System (TSS)
-  Includes existing infrastructure and new ElastiCache Redis caching layer.
+  AXIA Trading Strategy System (TSS) - Complete Stack with Conditional Resource Creation
+  Existing resources are referenced via parameters; new resources are created conditionally.
 
 # ==========================================
 # Parameters
 # ==========================================
 Parameters:
+  # --- Network Parameters ---
   VpcId:
     Type: String
     Description: The ID of the VPC where resources will be deployed.
@@ -16,10 +17,17 @@ Parameters:
     Type: String
     Description: The ID of the subnet for the EC2 and Redis instances.
     Default: "subnet-0f96a2ee60de57f2e"
+  AllowedSshCidr:
+    Type: String
+    Default: "210.194.188.227/32"
+
+  # --- Redis Parameters ---
   CacheNodeType:
     Type: String
     Description: The node type for the ElastiCache Redis cluster.
     Default: "cache.t4g.micro"
+
+  # --- EC2 Parameters ---
   Ec2InstanceType:
     Type: String
     Description: The instance type for the TSS EC2 Server.
@@ -41,63 +49,124 @@ Parameters:
     Description: CIDR block allowed to SSH/RDP into the EC2 instance.
     Default: "210.194.188.227/32"
 
+  # ==========================================
+  # Conditional Creation Flags
+  # ==========================================
+  
+  UseExistingDynamoDB:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "Use existing DynamoDB table (true) or create new (false)"
+  
+  UseExistingS3:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "Use existing S3 bucket (true) or create new (false)"
+  
+  UseExistingSQS:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "Use existing SQS queue (true) or create new (false)"
+  
+  UseExistingLambda:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "Use existing Lambda function (true) or create new (false)"
+  
+  UseExistingSecrets:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "Use existing Secrets (true) or create new (false)"
+  
+  UseExistingEC2:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "Use existing EC2 instance (true) or create new (false)"
+  
+  UseExistingIAMRoles:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "Use existing IAM roles (true) or create new (false)"
+  
+  UseExistingSecurityGroup:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: "Use existing Security Group (true) or create new (false)"
+
+  # ==========================================
+  # Existing Resource Identifiers
+  # ==========================================
+  
+  ExistingDynamoDBTableName:
+    Type: String
+    Default: "TSS_DynamoDB_OrderState"
+  
+  ExistingS3BucketName:
+    Type: String
+    Default: "tss-raw-data"
+  
+  ExistingSQSQueueName:
+    Type: String
+    Default: "TSS_OrderRequestQueue"
+  
+  ExistingLambdaFunctionName:
+    Type: String
+    Default: "TSS_AlertIngestionLambda"
+  
+  ExistingMT5SecretName:
+    Type: String
+    Default: "mt5/axiory/demo-credentials"
+  
+  ExistingSlackSecretName:
+    Type: String
+    Default: "slack/trading-space/rei"
+  
+  ExistingEC2InstanceId:
+    Type: String
+    Default: "i-026a2f6cf16204dd1"
+  
+  ExistingEC2RoleName:
+    Type: String
+    Default: "TSS-EC2-Role"
+  
+  ExistingLambdaRoleName:
+    Type: String
+    Default: "TSS_AlertIngestionLambdaRole"
+  
+  ExistingSecurityGroupId:
+    Type: String
+    Default: "sg-0ca0956beaeca2a96"
+
+# ==========================================
+# Conditions
+# ==========================================
+Conditions:
+  CreateNewDynamoDB: !Equals [!Ref UseExistingDynamoDB, "false"]
+  CreateNewS3: !Equals [!Ref UseExistingS3, "false"]
+  CreateNewSQS: !Equals [!Ref UseExistingSQS, "false"]
+  CreateNewLambda: !Equals [!Ref UseExistingLambda, "false"]
+  CreateNewSecrets: !Equals [!Ref UseExistingSecrets, "false"]
+  CreateNewEC2: !Equals [!Ref UseExistingEC2, "false"]
+  CreateNewIAMRoles: !Equals [!Ref UseExistingIAMRoles, "false"]
+  CreateNewSecurityGroup: !Equals [!Ref UseExistingSecurityGroup, "false"]
+
 Resources:
   # ==========================================
-  # Lambda & API Gateway
+  # DynamoDB (Conditional)
   # ==========================================
-
-  TSSAlertIngestionLambda:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: "TSS_AlertIngestionLambda"
-      Description: "TradingView Webhook Alert Ingestion"
-      Runtime: python3.13
-      Architectures: [arm64]
-      Handler: lambda_function.lambda_handler
-      CodeUri: ../../src/infrastructure/serverless/lambda/
-      MemorySize: 128
-      Timeout: 10
-      Role: !GetAtt TSSAlertIngestionLambdaRole.Arn
-      Environment:
-        Variables:
-          SQS_QUEUE_URL: !Ref TSSOrderRequestQueue
-          SECRET_PHRASE: "rei_secret_phrase"
-      Events:
-        WebhookApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref TradingViewWebhookApi
-            Path: /webhook
-            Method: post
-
-  TradingViewWebhookApi:
-    Type: AWS::Serverless::HttpApi
-    Properties:
-      Name: "TradingViewWebhookAPI"
-
-  # ==========================================
-  # SQS Queue
-  # ==========================================
-
-  TSSOrderRequestQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: "TSS_OrderRequestQueue"
-      SqsManagedSseEnabled: true
-      ReceiveMessageWaitTimeSeconds: 0
-      DelaySeconds: 0
-      MessageRetentionPeriod: 345600
-      MaximumMessageSize: 262144
-      VisibilityTimeout: 30
-
-  # ==========================================
-  # DynamoDB
-  # ==========================================
-
   TSSDynamoDBOrderStateTable:
     Type: AWS::DynamoDB::Table
+    Condition: CreateNewDynamoDB
     Properties:
-      TableName: "TSS_DynamoDB_OrderState"
+      TableName: !Ref ExistingDynamoDBTableName
       AttributeDefinitions:
         - AttributeName: "pk"
           AttributeType: "S"
@@ -109,17 +178,15 @@ Resources:
         - AttributeName: "sk"
           KeyType: "RANGE"
       BillingMode: "PAY_PER_REQUEST"
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: false
 
   # ==========================================
-  # S3 Bucket
+  # S3 (Conditional)
   # ==========================================
-
   TssRawDataBucket:
     Type: AWS::S3::Bucket
+    Condition: CreateNewS3
     Properties:
-      BucketName: "tss-raw-data"
+      BucketName: !Ref ExistingS3BucketName
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -131,50 +198,128 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
-            BucketKeyEnabled: true
-      CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders: ["*"]
-            AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
-            AllowedOrigins: ["https://*.sagemaker.aws"]
-            ExposedHeaders:
-              - ETag
-              - x-amz-delete-marker
-              - x-amz-id-2
-              - x-amz-request-id
-              - x-amz-server-side-encryption
-              - x-amz-version-id
-      LifecycleConfiguration:
-        Rules:
-          - Id: "incomplete-multipart-upload-cleanup"
-            Status: Enabled
-            AbortIncompleteMultipartUpload:
-              DaysAfterInitiation: 7
 
   # ==========================================
-  # Secrets Manager
+  # SQS (Conditional)
   # ==========================================
+  TSSOrderRequestQueue:
+    Type: AWS::SQS::Queue
+    Condition: CreateNewSQS
+    Properties:
+      QueueName: !Ref ExistingSQSQueueName
+      SqsManagedSseEnabled: true
+      VisibilityTimeout: 30
 
+  # ==========================================
+  # Secrets Manager (Conditional)
+  # ==========================================
   MT5CredentialsSecret:
     Type: AWS::SecretsManager::Secret
+    Condition: CreateNewSecrets
     Properties:
-      Name: "mt5/axiory/demo-credentials"
-      Description: "Trading Strategy System EC2 MT5 Demo Account Credentials"
+      Name: !Ref ExistingMT5SecretName
+      Description: "MT5 Demo Account Credentials"
 
   SlackWebhookSecret:
     Type: AWS::SecretsManager::Secret
+    Condition: CreateNewSecrets
     Properties:
-      Name: "slack/trading-space/rei"
+      Name: !Ref ExistingSlackSecretName
 
   # ==========================================
-  # EC2 Network Resources
+  # IAM Roles (Conditional)
   # ==========================================
+  TSSAlertIngestionLambdaRole:
+    Type: AWS::IAM::Role
+    Condition: CreateNewIAMRoles
+    Properties:
+      RoleName: !Ref ExistingLambdaRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: "TSSLambdaSQSPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !If 
+                  - CreateNewSQS
+                  - !GetAtt TSSOrderRequestQueue.Arn
+                  - !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${ExistingSQSQueueName}"
 
+  TSSEC2Role:
+    Type: AWS::IAM::Role
+    Condition: CreateNewIAMRoles
+    Properties:
+      RoleName: !Ref ExistingEC2RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+        - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+        - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+        - "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        - "arn:aws:iam::aws:policy/AmazonElastiCacheReadOnlyAccess"
+        - "arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess"
+
+  TSSEC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Condition: CreateNewIAMRoles
+    Properties:
+      InstanceProfileName: "TSS-EC2-InstanceProfile"
+      Roles:
+        - !If [CreateNewIAMRoles, !Ref TSSEC2Role, !Ref ExistingEC2RoleName]
+
+  # ==========================================
+  # Lambda (Conditional)
+  # ==========================================
+  TSSAlertIngestionLambda:
+    Type: AWS::Serverless::Function
+    Condition: CreateNewLambda
+    Properties:
+      FunctionName: !Ref ExistingLambdaFunctionName
+      Runtime: python3.13
+      Architectures: [arm64]
+      Handler: lambda_function.lambda_handler
+      CodeUri: ../../src/infrastructure/serverless/lambda/
+      MemorySize: 128
+      Timeout: 10
+      Role: !If
+        - CreateNewIAMRoles
+        - !GetAtt TSSAlertIngestionLambdaRole.Arn
+        - !Sub "arn:aws:iam::${AWS::AccountId}:role/${ExistingLambdaRoleName}"
+      Environment:
+        Variables:
+          SQS_QUEUE_URL: !If
+            - CreateNewSQS
+            - !Ref TSSOrderRequestQueue
+            - !Sub "https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${ExistingSQSQueueName}"
+          SECRET_PHRASE: "rei_secret_phrase"
+
+  # ==========================================
+  # Security Group (Conditional)
+  # ==========================================
   TSSServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    Condition: CreateNewSecurityGroup
     Properties:
       GroupName: "TSS-Server-SG"
-      GroupDescription: "Security group for Trading Strategy System EC2 Server"
+      GroupDescription: "Security group for TSS EC2 Server"
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -190,93 +335,44 @@ Resources:
         - Key: "Name"
           Value: "TSS-Server-SG"
 
-  # セキュリティグループ自己参照ルール（循環依存回避のため別リソース）
-  TSSServerSecurityGroupSelfIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref TSSServerSecurityGroup
-      IpProtocol: tcp
-      FromPort: 2049
-      ToPort: 2049
-      SourceSecurityGroupId: !Ref TSSServerSecurityGroup
-      Description: "NFS access from same security group"
-
-  TSSElasticIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-      Tags:
-        - Key: "Name"
-          Value: "TSS-MT5-Server-EIP"
-
   # ==========================================
-  # EC2 Storage
+  # EC2 (Conditional)
   # ==========================================
-
   TSSEBSVolume:
     Type: AWS::EC2::Volume
+    Condition: CreateNewEC2
     Properties:
       AvailabilityZone: "ap-northeast-1a"
       Size: 30
       VolumeType: "gp3"
       Iops: 3000
-      Throughput: 125
       Encrypted: false
-      SnapshotId: "snap-0ff8f1ed752ecf18d"
       Tags:
         - Key: "Name"
           Value: "TSS-MT5-Server-Volume"
 
-  # ==========================================
-  # EC2 Instance
-  # ==========================================
-
   TssEc2Instance:
     Type: AWS::EC2::Instance
+    Condition: CreateNewEC2
     Properties:
       InstanceType: !Ref Ec2InstanceType
       ImageId: !Ref Ec2AmiId
       KeyName: !Ref Ec2KeyName
-      IamInstanceProfile: !Ref TSSEC2InstanceProfile
+      IamInstanceProfile: !If
+        - CreateNewIAMRoles
+        - !Ref TSSEC2InstanceProfile
+        - !Ref ExistingEC2RoleName
       SubnetId: !Ref SubnetId
       PrivateIpAddress: !Ref Ec2PrivateIp
       SecurityGroupIds:
-        - !GetAtt TSSServerSecurityGroup.GroupId
-      # BlockDeviceMappingsを削除 - 独立ボリューム使用のため
-      EbsOptimized: true
-      Monitoring: false
-      CpuOptions:
-        CoreCount: 1
-        ThreadsPerCore: 2
-      CreditSpecification:
-        CPUCredits: "unlimited"
+        - !If [CreateNewSecurityGroup, !Ref TSSServerSecurityGroup, !Ref ExistingSecurityGroupId]
       Tags:
         - Key: "Name"
           Value: "TSS-MT5-Server"
-        - Key: "Project"
-          Value: "AXIA"
-
-  # ボリュームアタッチメント（データ永続性のため独立管理）
-  TSSVolumeAttachment:
-    Type: AWS::EC2::VolumeAttachment
-    Properties:
-      Device: "/dev/sda1"
-      InstanceId: !Ref TssEc2Instance
-      VolumeId: !Ref TSSEBSVolume
-      # EC2削除時もボリュームは保持（データ保護）
-      DeleteOnTermination: false
-
-  # Elastic IP関連付け
-  TSSEIPAssociation:
-    Type: AWS::EC2::EIPAssociation
-    Properties:
-      InstanceId: !Ref TssEc2Instance
-      AllocationId: !GetAtt TSSElasticIP.AllocationId
 
   # ==========================================
-  # Redis Cache Infrastructure
+  # Redis (Always Create - New Resources)
   # ==========================================
-
   ElastiCacheSubnetGroup:
     Type: AWS::ElastiCache::SubnetGroup
     Properties:
@@ -298,7 +394,10 @@ Resources:
         - IpProtocol: tcp
           FromPort: 6379
           ToPort: 6379
-          SourceSecurityGroupId: !GetAtt TSSServerSecurityGroup.GroupId
+          SourceSecurityGroupId: !If
+            - CreateNewSecurityGroup
+            - !Ref TSSServerSecurityGroup
+            - !Ref ExistingSecurityGroupId
           Description: "Allow Redis access from TSS EC2 instance"
       SecurityGroupEgress:
         - IpProtocol: "-1"
@@ -336,8 +435,7 @@ Resources:
       Name: "/tss/redis/endpoint"
       Type: String
       Value: !GetAtt TSSRedisCluster.RedisEndpoint.Address
-      Description: "Redis endpoint for the market data cache"
-      Tags: {}
+      Description: "Redis endpoint"
 
   RedisPortParameter:
     Type: AWS::SSM::Parameter
@@ -345,143 +443,35 @@ Resources:
       Name: "/tss/redis/port"
       Type: String
       Value: "6379"
-      Description: "Redis port for the market data cache"
-      Tags: {}
-
-  # ==========================================
-  # IAM Roles and Policies
-  # ==========================================
-
-  TSSAlertIngestionLambdaRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: "TSS_AlertIngestionLambdaRole"
-      Description: "Allows Lambda functions to call AWS services on your behalf."
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: "Allow"
-            Principal:
-              Service: "lambda.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-      Policies:
-        - PolicyName: "TSSLambdaSQSPolicy"
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - sqs:SendMessage
-                Resource: !GetAtt TSSOrderRequestQueue.Arn
-
-  TSSEC2Role:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: "TSS-EC2-Role"
-      Description: "Allows EC2 instances to call AWS services on your behalf."
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: "Allow"
-            Principal:
-              Service: "ec2.amazonaws.com"
-            Action: "sts:AssumeRole"
-      ManagedPolicyArns:
-        - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
-        - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-        - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
-        - "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
-        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-        # Redis and Parameter Store access
-        - "arn:aws:iam::aws:policy/AmazonElastiCacheReadOnlyAccess"
-        - "arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess"
-      Policies:
-        - PolicyName: "TSS-SQS-Policy"
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "sqs:ReceiveMessage"
-                  - "sqs:DeleteMessage"
-                  - "sqs:SendMessage"
-                Resource: !GetAtt TSSOrderRequestQueue.Arn
-
-  TSSEC2InstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      InstanceProfileName: "TSS-EC2-InstanceProfile"
-      Roles:
-        - !Ref TSSEC2Role
+      Description: "Redis port"
 
 # ==========================================
 # Outputs
 # ==========================================
 Outputs:
-  ApiEndpoint:
-    Description: "API Gateway endpoint URL for the TradingView Webhook"
-    Value: !Sub "https://${TradingViewWebhookApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"
-    Export:
-      Name: !Sub "${AWS::StackName}-ApiEndpoint"
-
-  SqsQueueUrl:
-    Description: "SQS Queue URL for order requests"
-    Value: !Ref TSSOrderRequestQueue
-    Export:
-      Name: !Sub "${AWS::StackName}-SqsQueueUrl"
-
   DynamoDbTableName:
-    Description: "DynamoDB table name for order state"
-    Value: !Ref TSSDynamoDBOrderStateTable
-    Export:
-      Name: !Sub "${AWS::StackName}-DynamoDbTableName"
+    Description: "DynamoDB table name"
+    Value: !If [CreateNewDynamoDB, !Ref TSSDynamoDBOrderStateTable, !Ref ExistingDynamoDBTableName]
 
   S3BucketName:
-    Description: "S3 bucket name for raw market data"
-    Value: !Ref TssRawDataBucket
-    Export:
-      Name: !Sub "${AWS::StackName}-S3BucketName"
+    Description: "S3 bucket name"
+    Value: !If [CreateNewS3, !Ref TssRawDataBucket, !Ref ExistingS3BucketName]
+
+  SqsQueueUrl:
+    Description: "SQS Queue URL"
+    Value: !If
+      - CreateNewSQS
+      - !Ref TSSOrderRequestQueue
+      - !Sub "https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${ExistingSQSQueueName}"
 
   Ec2InstanceId:
     Description: "EC2 Instance ID"
-    Value: !Ref TssEc2Instance
-    Export:
-      Name: !Sub "${AWS::StackName}-Ec2InstanceId"
-
-  Ec2PrivateIp:
-    Description: "EC2 Private IP Address"
-    Value: !GetAtt TssEc2Instance.PrivateIp
-    Export:
-      Name: !Sub "${AWS::StackName}-Ec2PrivateIp"
-
-  ElasticIp:
-    Description: "Elastic IP Address for EC2"
-    Value: !Ref TSSElasticIP
-    Export:
-      Name: !Sub "${AWS::StackName}-ElasticIp"
-
-  Ec2PublicIp:
-    Description: "EC2 Public IP Address (via EIP)"
-    Value: !Ref TSSElasticIP
-    Export:
-      Name: !Sub "${AWS::StackName}-Ec2PublicIp"
+    Value: !If [CreateNewEC2, !Ref TssEc2Instance, !Ref ExistingEC2InstanceId]
 
   RedisEndpoint:
-    Description: "Redis cluster endpoint address"
+    Description: "Redis endpoint"
     Value: !GetAtt TSSRedisCluster.RedisEndpoint.Address
-    Export:
-      Name: !Sub "${AWS::StackName}-RedisEndpoint"
 
   RedisPort:
-    Description: "Redis cluster endpoint port"
+    Description: "Redis port"
     Value: !GetAtt TSSRedisCluster.RedisEndpoint.Port
-    Export:
-      Name: !Sub "${AWS::StackName}-RedisPort"
-
-  RedisClusterArn:
-    Description: "Redis cluster ARN"
-    Value: !Sub "arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:cluster:${TSSRedisCluster}"
-    Export:
-      Name: !Sub "${AWS::StackName}-RedisClusterArn"

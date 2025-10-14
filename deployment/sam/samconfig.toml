@@ -8,6 +8,6 @@ region = "ap-northeast-1"
 profile = "dev-sso"
 confirm_changeset = true
 capabilities = "CAPABILITY_NAMED_IAM"
-parameter_overrides = "VpcId=\"vpc-0fdd0d82705f05cdd\" SubnetId=\"subnet-0f96a2ee60de57f2e\" CacheNodeType=\"cache.t4g.micro\" Ec2InstanceType=\"t3.micro\" Ec2AmiId=\"ami-03242795b1a32cbf1\" Ec2KeyName=\"TSS-MT5-Server\" Ec2PrivateIp=\"172.31.43.253\" AllowedSshCidr=\"210.194.188.227/32\""
+parameter_overrides = "VpcId=\"vpc-0fdd0d82705f05cdd\" SubnetId=\"subnet-0f96a2ee60de57f2e\" AllowedSshCidr=\"210.194.188.227/32\" CacheNodeType=\"cache.t4g.micro\" Ec2InstanceType=\"t3.micro\" Ec2AmiId=\"ami-03242795b1a32cbf1\" Ec2KeyName=\"TSS-MT5-Server\" Ec2PrivateIp=\"172.31.43.253\" UseExistingDynamoDB=\"true\" UseExistingS3=\"true\" UseExistingSQS=\"true\" UseExistingLambda=\"true\" UseExistingSecrets=\"true\" UseExistingEC2=\"true\" UseExistingIAMRoles=\"true\" UseExistingSecurityGroup=\"true\" ExistingDynamoDBTableName=\"TSS_DynamoDB_OrderState\" ExistingS3BucketName=\"tss-raw-data\" ExistingSQSQueueName=\"TSS_OrderRequestQueue\" ExistingLambdaFunctionName=\"TSS_AlertIngestionLambda\" ExistingMT5SecretName=\"mt5/axiory/demo-credentials\" ExistingSlackSecretName=\"slack/trading-space/rei\" ExistingEC2InstanceId=\"i-026a2f6cf16204dd1\" ExistingEC2RoleName=\"TSS-EC2-Role\" ExistingLambdaRoleName=\"TSS_AlertIngestionLambdaRole\" ExistingSecurityGroupId=\"sg-0ca0956beaeca2a96\""
 image_repositories = []
 disable_rollback = true

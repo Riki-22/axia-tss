@@ -16,7 +16,6 @@
 # --- Configuration ---
 PROFILE="dev-sso"
 REGION="ap-northeast-1"
-STACK_NAME="axia-tss-20251014" # Specify your stack name if different
 
 # --- Color Codes ---
 GREEN='\033[0;32m'
@@ -82,7 +81,7 @@ aws ec2 describe-instances \
   --profile "$PROFILE" \
   --region "$REGION" \
   --filters "Name=tag:Name,Values='TSS-MT5-Server'" \
-  --query "Reservations[].Instances[].[InstanceId, State.Name, PrivateIpAddress, Tags[?Key=='Name'].Value | [0]]" \
+  --query "Reservations[].Instances[].[InstanceId, State.Name, PrivateIpAddress, PublicIpAddress]" \
   --output table
 
 # 7. IAM Roles
@@ -94,10 +93,11 @@ aws iam list-roles \
 
 # 8. ElastiCache Redis Cluster
 print_header "8. Verifying ElastiCache Redis Cluster"
+# Corrected the command to use --cache-cluster-id
 aws elasticache describe-cache-clusters \
   --profile "$PROFILE" \
   --region "$REGION" \
-  --show-cache-cluster-id "tss-market-data-cache" \
+  --cache-cluster-id "tss-market-data-cache" \
   --query "CacheClusters[].[CacheClusterId, CacheClusterStatus, CacheNodeType]" \
   --output table
 
