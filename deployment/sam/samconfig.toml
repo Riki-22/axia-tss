@@ -1,0 +1,13 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "axia-tss-20251014"
+resolve_s3 = true
+s3_prefix = "axia-tss-20251014"
+region = "ap-northeast-1"
+profile = "dev-sso"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+parameter_overrides = "VpcId=\"vpc-0fdd0d82705f05cdd\" SubnetId=\"subnet-0f96a2ee60de57f2e\" CacheNodeType=\"cache.t4g.micro\" Ec2InstanceType=\"t3.micro\" Ec2AmiId=\"ami-03242795b1a32cbf1\" Ec2KeyName=\"TSS-MT5-Server\" Ec2PrivateIp=\"172.31.43.253\" AllowedSshCidr=\"210.194.188.227/32\""
+image_repositories = []
+disable_rollback = true

@@ -1,465 +1,465 @@
----
-Metadata:
-  AWSToolsMetrics:
-    IaC_Generator: "arn:aws:cloudformation:ap-northeast-1:837692470023:generatedTemplate/1bc318df-38a5-4ed1-8086-bd59ac7151d3"
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AXIA Trading Strategy System (TSS)
+  Includes existing infrastructure and new ElastiCache Redis caching layer.
+
+# ==========================================
+# Parameters
+# ==========================================
 Parameters:
-  LambdaFunctionTSSAlertIngestionLambdaCodeZipFileTSzTT:
-    NoEcho: "true"
-    Type: "String"
-    Description: "(Node.js and Python) The source code of your Lambda function. If
-     you include your function source inline with this parameter, CFN places it
-     in a file named ``index`` and zips it to create a [deployment package](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-package.html).
-     This zip file cannot exceed 4MB. For the ``Handler`` property, the first part
-     of the handler identifier must be ``index``. For example, ``index.handler``.
+  VpcId:
+    Type: String
+    Description: The ID of the VPC where resources will be deployed.
+    Default: "vpc-0fdd0d82705f05cdd"
+  SubnetId:
+    Type: String
+    Description: The ID of the subnet for the EC2 and Redis instances.
+    Default: "subnet-0f96a2ee60de57f2e"
+  CacheNodeType:
+    Type: String
+    Description: The node type for the ElastiCache Redis cluster.
+    Default: "cache.t4g.micro"
+  Ec2InstanceType:
+    Type: String
+    Description: The instance type for the TSS EC2 Server.
+    Default: "t3.micro"
+  Ec2AmiId:
+    Type: String
+    Description: The AMI ID for the TSS EC2 Server.
+    Default: "ami-03242795b1a32cbf1"
+  Ec2KeyName:
+    Type: String
+    Description: The key pair name for the EC2 instance.
+    Default: "TSS-MT5-Server"
+  Ec2PrivateIp:
+    Type: String
+    Description: The private IP address for the EC2 instance.
+    Default: "172.31.43.253"
+  AllowedSshCidr:
+    Type: String
+    Description: CIDR block allowed to SSH/RDP into the EC2 instance.
+    Default: "210.194.188.227/32"
 
-    When you specify source code inline for a Node.js function, the ``index``
-     file that CFN creates uses the extension ``.js``. This means that LAM treats
-     the file as a CommonJS module. ES modules aren't supported for inline functions.
-
-    For JSON, you must escape quotes and special characters such as newline
-     (``\\n``) with a backslash.
-     If you specify a function that interacts with
-     an AWS CloudFormation custom resource, you don't have to write your own functions
-     to send responses to the custom resource that invoked the function. AWS CloudFormation
-     provides a response module ([cfn-response](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-lambda-function-code-cfnresponsemodule.html))
-     that simplifies sending responses. See [Using Lambda with CloudFormation](https://docs.aws.amazon.com/lambda/latest/dg/services-cloudformation.html)
-     for details."
-  LambdaFunctionTSSAlertIngestionLambdaCodeS3Keyfpogq:
-    NoEcho: "true"
-    Type: "String"
-    Description: "The Amazon S3 key of the deployment package."
-  LambdaFunctionTSSAlertIngestionLambdaCodeImageUricLEe1:
-    NoEcho: "true"
-    Type: "String"
-    Description: "URI of a [container image](https://docs.aws.amazon.com/lambda/latest/dg/lambda-images.html)\n     in the Amazon ECR registry."
-  LambdaFunctionTSSAlertIngestionLambdaCodeS3BucketIvsRR:
-    NoEcho: "true"
-    Type: "String"
-    Description: "An Amazon S3 bucket in the same AWS-Region as your function. The\n     bucket can be in a different AWS-account."
-  LambdaFunctionTSSAlertIngestionLambdaCodeS3ObjectVersionYlrUb:
-    NoEcho: "true"
-    Type: "String"
-    Description: "For versioned objects, the version of the deployment package object\n     to use."
 Resources:
-  LambdaFunctionTSSAlertIngestionLambda:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::Lambda::Function"
-    DeletionPolicy: "Retain"
+  # ==========================================
+  # Lambda & API Gateway
+  # ==========================================
+
+  TSSAlertIngestionLambda:
+    Type: AWS::Serverless::Function
     Properties:
-      MemorySize: 128
-      Description: ""
-      TracingConfig:
-        Mode: "PassThrough"
-      Timeout: 3
-      RuntimeManagementConfig:
-        UpdateRuntimeOn: "Auto"
-      Handler: "lambda_function.lambda_handler"
-      Code:
-        S3ObjectVersion:
-          Ref: "LambdaFunctionTSSAlertIngestionLambdaCodeS3ObjectVersionYlrUb"
-        S3Bucket:
-          Ref: "LambdaFunctionTSSAlertIngestionLambdaCodeS3BucketIvsRR"
-        ZipFile:
-          Ref: "LambdaFunctionTSSAlertIngestionLambdaCodeZipFileTSzTT"
-        ImageUri:
-          Ref: "LambdaFunctionTSSAlertIngestionLambdaCodeImageUricLEe1"
-        S3Key:
-          Ref: "LambdaFunctionTSSAlertIngestionLambdaCodeS3Keyfpogq"
-      Role:
-        Fn::GetAtt:
-        - "IAMRoleTSSAlertIngestionLambdaRole"
-        - "Arn"
-      FileSystemConfigs: []
       FunctionName: "TSS_AlertIngestionLambda"
-      Runtime: "python3.13"
-      PackageType: "Zip"
-      LoggingConfig:
-        LogFormat: "Text"
-        LogGroup: "/aws/lambda/TSS_AlertIngestionLambda"
-      RecursiveLoop: "Terminate"
+      Description: "TradingView Webhook Alert Ingestion"
+      Runtime: python3.13
+      Architectures: [arm64]
+      Handler: lambda_function.lambda_handler
+      CodeUri: ../../src/infrastructure/serverless/lambda/
+      MemorySize: 128
+      Timeout: 10
+      Role: !GetAtt TSSAlertIngestionLambdaRole.Arn
       Environment:
         Variables:
-          SQS_QUEUE_URL: "https://sqs.ap-northeast-1.amazonaws.com/837692470023/TSS_OrderRequestQueue"
+          SQS_QUEUE_URL: !Ref TSSOrderRequestQueue
           SECRET_PHRASE: "rei_secret_phrase"
-      EphemeralStorage:
-        Size: 512
-      Architectures:
-      - "arm64"
-  EC2Instance:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::EC2::Instance"
-    DeletionPolicy: "Retain"
+      Events:
+        WebhookApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TradingViewWebhookApi
+            Path: /webhook
+            Method: post
+
+  TradingViewWebhookApi:
+    Type: AWS::Serverless::HttpApi
     Properties:
-      Tenancy: "default"
-      SecurityGroups:
-      - "TSS-Server-SG"
-      PrivateIpAddress: "172.31.43.253"
-      BlockDeviceMappings:
-      - Ebs:
-          SnapshotId: "snap-0ff8f1ed752ecf18d"
-          VolumeType: "gp3"
-          Iops: 3000
-          VolumeSize: 30
-          Encrypted: false
-          DeleteOnTermination: true
-        DeviceName: "/dev/sda1"
-      IamInstanceProfile:
-        Ref: "IAMInstanceProfileTSSEC2Role"
-      SubnetId: "subnet-0f96a2ee60de57f2e"
-      EbsOptimized: true
-      Volumes:
-      - VolumeId: "vol-08a8f4e727b008b26"
-        Device: "/dev/sda1"
-      NetworkInterfaces:
-      - PrivateIpAddresses:
-        - PrivateIpAddress: "172.31.43.253"
-          Primary: true
-        SecondaryPrivateIpAddressCount: 0
-        DeviceIndex: "0"
-        GroupSet:
-        - Ref: "EC2SecurityGroup"
-        Ipv6Addresses: []
-        SubnetId: "subnet-0f96a2ee60de57f2e"
-        AssociatePublicIpAddress: false
-        NetworkInterfaceId: "eni-0cd9106e22ffcf03e"
-        DeleteOnTermination: true
-      ImageId: "ami-03242795b1a32cbf1"
-      InstanceType: "t3.micro"
-      Monitoring: false
-      Tags:
-      - Value: "TSS-MT5-Server"
-        Key: "Name"
-      InstanceInitiatedShutdownBehavior: "stop"
-      CpuOptions:
-        ThreadsPerCore: 2
-        CoreCount: 1
-      AvailabilityZone: "ap-northeast-1a"
-      PrivateDnsNameOptions:
-        EnableResourceNameDnsARecord: true
-        HostnameType: "ip-name"
-        EnableResourceNameDnsAAAARecord: false
-      SecurityGroupIds:
-      - "sg-0ca0956beaeca2a96"
-      DisableApiTermination: false
-      KeyName: "TSS-MT5-Server"
-      SourceDestCheck: true
-      PlacementGroupName: ""
-      VpcId: "vpc-0fdd0d82705f05cdd"
-      State:
-        Code: "80"
-        Name: "stopped"
-      CreditSpecification:
-        CPUCredits: "unlimited"
-  ApiGatewayV2Deployment:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::ApiGatewayV2::Deployment"
-    DeletionPolicy: "Retain"
+      Name: "TradingViewWebhookAPI"
+
+  # ==========================================
+  # SQS Queue
+  # ==========================================
+
+  TSSOrderRequestQueue:
+    Type: AWS::SQS::Queue
     Properties:
-      ApiId:
-        Ref: "ApiGatewayV2Api"
-      Description: "Automatic deployment triggered by changes to the Api configuration"
-  S3BucketTssrawdata:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::S3::Bucket"
-    DeletionPolicy: "Retain"
-    Properties:
-      PublicAccessBlockConfiguration:
-        RestrictPublicBuckets: true
-        IgnorePublicAcls: true
-        BlockPublicPolicy: true
-        BlockPublicAcls: true
-      BucketName: "tss-raw-data"
-      CorsConfiguration:
-        CorsRules:
-        - ExposedHeaders:
-          - "ETag"
-          - "x-amz-delete-marker"
-          - "x-amz-id-2"
-          - "x-amz-request-id"
-          - "x-amz-server-side-encryption"
-          - "x-amz-version-id"
-          AllowedMethods:
-          - "POST"
-          - "PUT"
-          - "GET"
-          - "HEAD"
-          - "DELETE"
-          AllowedOrigins:
-          - "https://*.sagemaker.aws"
-          AllowedHeaders:
-          - "*"
-      OwnershipControls:
-        Rules:
-        - ObjectOwnership: "BucketOwnerEnforced"
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-        - BucketKeyEnabled: true
-          ServerSideEncryptionByDefault:
-            SSEAlgorithm: "AES256"
-      LifecycleConfiguration:
-        TransitionDefaultMinimumObjectSize: "all_storage_classes_128K"
-        Rules:
-        - Status: "Enabled"
-          AbortIncompleteMultipartUpload:
-            DaysAfterInitiation: 7
-          Id: "incomplete-multipart-upload-cleanup"
-      VersioningConfiguration:
-        Status: "Enabled"
-  EC2EIP5424914131:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::EC2::EIP"
-    DeletionPolicy: "Retain"
-    Properties:
-      PublicIpv4Pool: "amazon"
-      Domain: "vpc"
-      Tags: []
-      NetworkBorderGroup: "ap-northeast-1"
-  EC2KeyPairTSSMT5Server:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::EC2::KeyPair"
-    DeletionPolicy: "Retain"
-    Properties:
-      KeyName: "TSS-MT5-Server"
-      KeyType: "rsa"
-      PublicKeyMaterial: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC3M8L0jHJzLHw3jRlZykYdqKUHB6Acf9fLM62qwLOI9c7VgEcXvTs7mNm28sGf4ruWVJhTDLO5vfH5EDRQZgIcX2M29cdeFwz+If+e/EJjHdGroDHRf94H0/RvBUFB3zK1YYzM5kZOa9ZTXnDDRtbEr2JyL8hva76fNJtDkPfW1X/J+9trKuImO/pQ+QNVUGwO3uEkBdvbHbMPMDEMoj8/GPxTwiiArLLII0kix4ktt51QAIf9zjzThzdIUaX7j7AkFeAqfvTDSQIDCZMqBLrCbot7uAIbZQW3hh/NPhnN9En0Dw7kXuB7O+/uCxaWNIcETbEQrTL+3z3sQrMBIuFh\n        TSS-MT5-Server\n"
-      Tags: []
-  EC2Volume:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::EC2::Volume"
-    DeletionPolicy: "Retain"
-    Properties:
-      MultiAttachEnabled: false
-      SnapshotId: "snap-0ff8f1ed752ecf18d"
-      VolumeType: "gp3"
-      Encrypted: false
-      Size: 30
-      AutoEnableIO: true
-      AvailabilityZone: "ap-northeast-1a"
-      Throughput: 125
-      Iops: 3000
-      Tags: []
-  EC2SecurityGroup:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::EC2::SecurityGroup"
-    DeletionPolicy: "Retain"
-    Properties:
-      GroupDescription: "Security group for Trading Strategy System EC2 Server"
-      GroupName: "TSS-Server-SG"
-      VpcId: "vpc-0fdd0d82705f05cdd"
-      SecurityGroupIngress:
-      - CidrIp: "210.194.188.227/32"
-        IpProtocol: "tcp"
-        FromPort: 3389
-        ToPort: 3389
-      - IpProtocol: "tcp"
-        FromPort: 2049
-        SourceSecurityGroupId: "sg-0ca0956beaeca2a96"
-        ToPort: 2049
-        SourceSecurityGroupOwnerId: "837692470023"
-      SecurityGroupEgress:
-      - CidrIp: "0.0.0.0/0"
-        IpProtocol: "-1"
-        FromPort: -1
-        ToPort: -1
-  ApiGatewayV2DeploymentWC:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::ApiGatewayV2::Deployment"
-    DeletionPolicy: "Retain"
-    Properties:
-      ApiId:
-        Ref: "ApiGatewayV2Api"
-      Description: "Automatic deployment triggered by changes to the Api configuration"
-  SecretsManagerSecretAm:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::SecretsManager::Secret"
-    DeletionPolicy: "Retain"
-    Properties:
-      ReplicaRegions: []
-      Tags: []
-      Name: "slack/trading-space/rei"
-  SQSQueueTSSOrderRequestQueue:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::SQS::Queue"
-    DeletionPolicy: "Retain"
-    Properties:
+      QueueName: "TSS_OrderRequestQueue"
       SqsManagedSseEnabled: true
       ReceiveMessageWaitTimeSeconds: 0
       DelaySeconds: 0
       MessageRetentionPeriod: 345600
       MaximumMessageSize: 262144
       VisibilityTimeout: 30
-      QueueName: "TSS_OrderRequestQueue"
-  SecretsManagerSecret:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::SecretsManager::Secret"
-    DeletionPolicy: "Retain"
+
+  # ==========================================
+  # DynamoDB
+  # ==========================================
+
+  TSSDynamoDBOrderStateTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      ReplicaRegions: []
-      Description: "Trading Strategy System EC2 MT5 Demo Account Credentials"
-      Tags: []
-      Name: "mt5/axiory/demo-credentials"
-  DynamoDBTableTSSDynamoDBOrderState:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::DynamoDB::Table"
-    DeletionPolicy: "Retain"
-    Properties:
-      SSESpecification:
-        SSEEnabled: false
       TableName: "TSS_DynamoDB_OrderState"
       AttributeDefinitions:
-      - AttributeType: "S"
-        AttributeName: "pk"
-      - AttributeType: "S"
-        AttributeName: "sk"
-      ContributorInsightsSpecification:
-        Enabled: false
+        - AttributeName: "pk"
+          AttributeType: "S"
+        - AttributeName: "sk"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "pk"
+          KeyType: "HASH"
+        - AttributeName: "sk"
+          KeyType: "RANGE"
       BillingMode: "PAY_PER_REQUEST"
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: false
-      WarmThroughput:
-        ReadUnitsPerSecond: 12000
-        WriteUnitsPerSecond: 4000
-      KeySchema:
-      - KeyType: "HASH"
-        AttributeName: "pk"
-      - KeyType: "RANGE"
-        AttributeName: "sk"
-      DeletionProtectionEnabled: false
-      TableClass: "STANDARD"
-      Tags: []
-      TimeToLiveSpecification:
-        Enabled: false
-  IAMInstanceProfileTSSEC2Role:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::IAM::InstanceProfile"
-    DeletionPolicy: "Retain"
+
+  # ==========================================
+  # S3 Bucket
+  # ==========================================
+
+  TssRawDataBucket:
+    Type: AWS::S3::Bucket
     Properties:
-      Path: "/"
-      Roles:
-      - Ref: "IAMRoleTSSEC2Role"
-      InstanceProfileName:
-        Ref: "IAMRoleTSSEC2Role"
-  ApiGatewayV2Api:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::ApiGatewayV2::Api"
-    DeletionPolicy: "Retain"
+      BucketName: "tss-raw-data"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ["*"]
+            AllowedMethods: [GET, PUT, POST, DELETE, HEAD]
+            AllowedOrigins: ["https://*.sagemaker.aws"]
+            ExposedHeaders:
+              - ETag
+              - x-amz-delete-marker
+              - x-amz-id-2
+              - x-amz-request-id
+              - x-amz-server-side-encryption
+              - x-amz-version-id
+      LifecycleConfiguration:
+        Rules:
+          - Id: "incomplete-multipart-upload-cleanup"
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  # ==========================================
+  # Secrets Manager
+  # ==========================================
+
+  MT5CredentialsSecret:
+    Type: AWS::SecretsManager::Secret
     Properties:
-      IpAddressType: "ipv4"
-      RouteSelectionExpression: "$request.method $request.path"
-      DisableExecuteApiEndpoint: false
-      ProtocolType: "HTTP"
+      Name: "mt5/axiory/demo-credentials"
+      Description: "Trading Strategy System EC2 MT5 Demo Account Credentials"
+
+  SlackWebhookSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: "slack/trading-space/rei"
+
+  # ==========================================
+  # EC2 Network Resources
+  # ==========================================
+
+  TSSServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "TSS-Server-SG"
+      GroupDescription: "Security group for Trading Strategy System EC2 Server"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: !Ref AllowedSshCidr
+          Description: "RDP access from allowed IP"
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref TSSServerSecurityGroup
+          Description: "NFS access from same security group"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+          Description: "Allow all outbound traffic"
+      Tags:
+        - Key: "Name"
+          Value: "TSS-Server-SG"
+
+  TSSElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: "Name"
+          Value: "TSS-MT5-Server-EIP"
+
+  # ==========================================
+  # EC2 Storage
+  # ==========================================
+
+  TSSEBSVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      AvailabilityZone: "ap-northeast-1a"
+      Size: 30
+      VolumeType: "gp3"
+      Iops: 3000
+      Throughput: 125
+      Encrypted: false
+      SnapshotId: "snap-0ff8f1ed752ecf18d"
+      Tags:
+        - Key: "Name"
+          Value: "TSS-MT5-Server-Volume"
+
+  # ==========================================
+  # EC2 Instance
+  # ==========================================
+
+  TssEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref Ec2InstanceType
+      ImageId: !Ref Ec2AmiId
+      KeyName: !Ref Ec2KeyName
+      IamInstanceProfile: !Ref TSSEC2InstanceProfile
+      SubnetId: !Ref SubnetId
+      PrivateIpAddress: !Ref Ec2PrivateIp
+      SecurityGroupIds:
+        - !GetAtt TSSServerSecurityGroup.GroupId
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeSize: 30
+            VolumeType: "gp3"
+            Iops: 3000
+            DeleteOnTermination: true
+            Encrypted: false
+      EbsOptimized: true
+      Monitoring: false
+      CpuOptions:
+        CoreCount: 1
+        ThreadsPerCore: 2
+      CreditSpecification:
+        CPUCredits: "unlimited"
+      Tags:
+        - Key: "Name"
+          Value: "TSS-MT5-Server"
+        - Key: "Project"
+          Value: "AXIA"
+
+  # ==========================================
+  # Redis Cache Infrastructure
+  # ==========================================
+
+  ElastiCacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: "Subnet group for TSS Redis cluster"
+      SubnetIds:
+        - !Ref SubnetId
+      CacheSubnetGroupName: "tss-redis-subnet-group"
+      Tags:
+        - Key: "Name"
+          Value: "TSS-Redis-Subnet-Group"
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "TSS-Redis-SG"
+      GroupDescription: "Security group for TSS Redis cluster - allows access from EC2 only"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !GetAtt TSSServerSecurityGroup.GroupId
+          Description: "Allow Redis access from TSS EC2 instance"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+          Description: "Allow all outbound traffic"
+      Tags:
+        - Key: "Name"
+          Value: "TSS-Redis-SG"
+  TSSRedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      CacheNodeType: !Ref CacheNodeType
+      Engine: redis
+      EngineVersion: "7.1"
+      NumCacheNodes: 1
+      Port: 6379
+      ClusterName: "tss-market-data-cache"
+      CacheSubnetGroupName: !Ref ElastiCacheSubnetGroup
+      VpcSecurityGroupIds:
+        - !GetAtt RedisSecurityGroup.GroupId
+      PreferredMaintenanceWindow: "sun:05:00-sun:06:00"
+      SnapshotRetentionLimit: 1
+      AutoMinorVersionUpgrade: true
+      AZMode: "single-az"
+      PreferredAvailabilityZone: "ap-northeast-1a"
+      Tags:
+        - Key: "Name"
+          Value: "TSS-Market-Data-Cache"
+        - Key: "Purpose"
+          Value: "OHLCV-24h-Cache"
+
+  RedisEndpointParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: "/tss/redis/endpoint"
+      Type: String
+      Value: !GetAtt TSSRedisCluster.RedisEndpoint.Address
+      Description: "Redis endpoint for the market data cache"
       Tags: {}
-      Name: "TradingViewWebhookAPI"
-  EC2VolumeAttachment:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::EC2::VolumeAttachment"
-    DeletionPolicy: "Retain"
+
+  RedisPortParameter:
+    Type: AWS::SSM::Parameter
     Properties:
-      InstanceId: "i-026a2f6cf16204dd1"
-      VolumeId: "vol-08a8f4e727b008b26"
-      Device: "/dev/sda1"
-  IAMRoleTSSEC2Role:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::IAM::Role"
-    DeletionPolicy: "Retain"
+      Name: "/tss/redis/port"
+      Type: String
+      Value: "6379"
+      Description: "Redis port for the market data cache"
+      Tags: {}
+
+  # ==========================================
+  # IAM Roles and Policies
+  # ==========================================
+
+  TSSAlertIngestionLambdaRole:
+    Type: AWS::IAM::Role
     Properties:
-      Path: "/"
-      ManagedPolicyArns:
-      - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
-      - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-      - "arn:aws:iam::837692470023:policy/TSS_SQSSendMessagePolicy"
-      - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
-      - "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
-      - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-      MaxSessionDuration: 3600
-      RoleName: "TSS-EC2-Role"
-      Description: "Allows EC2 instances to call AWS services on your behalf."
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-        - Action: "sts:AssumeRole"
-          Effect: "Allow"
-          Principal:
-            Service: "ec2.amazonaws.com"
-  IAMManagedPolicyPolicyTSSSQSSendMessagePolicy:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::IAM::ManagedPolicy"
-    DeletionPolicy: "Retain"
-    Properties:
-      ManagedPolicyName: "TSS_SQSSendMessagePolicy"
-      Path: "/"
-      Description: ""
-      Groups: []
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-        - Resource: "arn:aws:sqs:ap-northeast-1:837692470023:TSS_OrderRequestQueue"
-          Action:
-          - "sqs:SendMessage"
-          - "sqs:ReceiveMessage"
-          - "sqs:DeleteMessage"
-          Effect: "Allow"
-        - Resource: !GetAtt AutonomousEngineQueue.Arn
-          Action:
-          - "sqs:ReceiveMessage"
-          - "sqs:DeleteMessage"
-          Effect: "Allow"
-        - Resource: !GetAtt MarketAnalysisQueue.Arn
-          Action:
-          - "sqs:ReceiveMessage"
-          - "sqs:DeleteMessage"
-          Effect: "Allow"
-        - Resource: !GetAtt MT5DataRequestQueue.Arn
-          Action:
-          - "sqs:SendMessage"
-          - "sqs:ReceiveMessage"
-          - "sqs:DeleteMessage"
-          Effect: "Allow"
-        - Resource: !Ref TradeSignalsTopic
-          Action:
-          - "sns:Publish"
-          Effect: "Allow"
-      Roles:
-      - Ref: "IAMRoleTSSEC2Role"
-      - Ref: "IAMRoleTSSAlertIngestionLambdaRole"
-      Users: []
-  LambdaPermissionFunctiontssalertingestionTSSAlertIngestionLambdaFunctioa4EjQzKm3LqE:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::Lambda::Permission"
-    DeletionPolicy: "Retain"
-    Properties:
-      FunctionName: "arn:aws:lambda:ap-northeast-1:837692470023:function:tss-alert-ingestion-TSSAlertIngestionLambdaFunctio-a4EjQzKm3LqE"
-      Action: "lambda:InvokeFunction"
-      SourceArn: "arn:aws:execute-api:ap-northeast-1:837692470023:nytm3lpkoj/*/*/webhook"
-      Principal: "apigateway.amazonaws.com"
-  IAMRoleTSSAlertIngestionLambdaRole:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::IAM::Role"
-    DeletionPolicy: "Retain"
-    Properties:
-      Path: "/"
-      ManagedPolicyArns:
-      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-      - "arn:aws:iam::837692470023:policy/TSS_SQSSendMessagePolicy"
-      MaxSessionDuration: 3600
       RoleName: "TSS_AlertIngestionLambdaRole"
       Description: "Allows Lambda functions to call AWS services on your behalf."
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
-        - Action: "sts:AssumeRole"
-          Effect: "Allow"
-          Principal:
-            Service: "lambda.amazonaws.com"
-  LambdaPermissionFunctionTSSAlertIngestionLambda:
-    UpdateReplacePolicy: "Retain"
-    Type: "AWS::Lambda::Permission"
-    DeletionPolicy: "Retain"
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: "TSSLambdaSQSPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt TSSOrderRequestQueue.Arn
+
+  TSSEC2Role:
+    Type: AWS::IAM::Role
     Properties:
-      FunctionName:
-        Fn::GetAtt:
-        - "LambdaFunctionTSSAlertIngestionLambda"
-        - "Arn"
-      Action: "lambda:InvokeFunction"
-      SourceArn: "arn:aws:execute-api:ap-northeast-1:837692470023:nytm3lpkoj/*/*/webhook"
-      Principal: "apigateway.amazonaws.com"
+      RoleName: "TSS-EC2-Role"
+      Description: "Allows EC2 instances to call AWS services on your behalf."
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+        - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+        - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+        - "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        # Redis and Parameter Store access
+        - "arn:aws:iam::aws:policy/AmazonElastiCacheReadOnlyAccess"
+        - "arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess"
+      Policies:
+        - PolicyName: "TSS-SQS-Policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "sqs:ReceiveMessage"
+                  - "sqs:DeleteMessage"
+                  - "sqs:SendMessage"
+                Resource: !GetAtt TSSOrderRequestQueue.Arn
+
+  TSSEC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: "TSS-EC2-InstanceProfile"
+      Roles:
+        - !Ref TSSEC2Role
+
+# ==========================================
+# Outputs
+# ==========================================
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL for the TradingView Webhook"
+    Value: !Sub "https://${TradingViewWebhookApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiEndpoint"
+
+  SqsQueueUrl:
+    Description: "SQS Queue URL for order requests"
+    Value: !Ref TSSOrderRequestQueue
+    Export:
+      Name: !Sub "${AWS::StackName}-SqsQueueUrl"
+
+  DynamoDbTableName:
+    Description: "DynamoDB table name for order state"
+    Value: !Ref TSSDynamoDBOrderStateTable
+    Export:
+      Name: !Sub "${AWS::StackName}-DynamoDbTableName"
+
+  S3BucketName:
+    Description: "S3 bucket name for raw market data"
+    Value: !Ref TssRawDataBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-S3BucketName"
+
+  Ec2InstanceId:
+    Description: "EC2 Instance ID"
+    Value: !Ref TssEc2Instance
+    Export:
+      Name: !Sub "${AWS::StackName}-Ec2InstanceId"
+
+  Ec2PrivateIp:
+    Description: "EC2 Private IP Address"
+    Value: !GetAtt TssEc2Instance.PrivateIp
+    Export:
+      Name: !Sub "${AWS::StackName}-Ec2PrivateIp"
+
+  ElasticIp:
+    Description: "Elastic IP Address for EC2"
+    Value: !Ref TSSElasticIP
+    Export:
+      Name: !Sub "${AWS::StackName}-ElasticIp"
+
+  RedisEndpoint:
+    Description: "Redis cluster endpoint address"
+    Value: !GetAtt TSSRedisCluster.RedisEndpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-RedisEndpoint"
+
+  RedisPort:
+    Description: "Redis cluster endpoint port"
+    Value: !GetAtt TSSRedisCluster.RedisEndpoint.Port
+    Export:
+      Name: !Sub "${AWS::StackName}-RedisPort"
+
+  RedisClusterArn:
+    Description: "Redis cluster ARN"
+    Value: !Sub "arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:cluster:${TSSRedisCluster}"
+    Export:
+      Name: !Sub "${AWS::StackName}-RedisClusterArn"
