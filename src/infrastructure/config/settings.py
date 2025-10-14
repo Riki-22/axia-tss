@@ -7,7 +7,18 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import boto3
 from dotenv import load_dotenv
-import MetaTrader5 as mt5
+
+# MT5は条件付きインポート
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+    # 警告は環境変数で制御
+    import os
+    if os.getenv('DEBUG', '').lower() == 'true':
+        logging.warning("MetaTrader5 module not available. MT5 features will be disabled.")
 
 # ロガー設定
 logging.basicConfig(
@@ -72,13 +83,22 @@ class Settings:
         ]
         
         # タイムフレーム設定
-        self.timeframe_map = {
-            "M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5, 
-            "M15": mt5.TIMEFRAME_M15, "M30": mt5.TIMEFRAME_M30,
-            "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4,
-            "D1": mt5.TIMEFRAME_D1, "W1": mt5.TIMEFRAME_W1, 
-            "MN1": mt5.TIMEFRAME_MN1
-        }
+        # MT5時間足マッピング（MT5が利用可能な場合のみ）
+        if MT5_AVAILABLE and mt5:
+            self.timeframe_map = {
+                "M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5,
+                "M15": mt5.TIMEFRAME_M15, "M30": mt5.TIMEFRAME_M30,
+                "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4,
+                "D1": mt5.TIMEFRAME_D1, "W1": mt5.TIMEFRAME_W1,
+                "MN1": mt5.TIMEFRAME_MN1
+            }
+        else:
+            # ダミー値（開発環境用）
+            self.timeframe_map = {
+                "M1": 1, "M5": 5, "M15": 15, "M30": 30,
+                "H1": 60, "H4": 240, "D1": 1440, "W1": 10080,
+                "MN1": 43200
+            }
         
         timeframes_str = os.getenv('DATA_COLLECTION_TIMEFRAMES', 'H1,D1')
         self.data_collection_timeframes = [
@@ -102,16 +122,56 @@ class Settings:
     def _init_aws_clients(self):
         """AWSクライアント初期化"""
         try:
-            logger.info(f"AWSクライアントをリージョン '{self.aws_region}' で初期化します...")
-            self.sqs_client = boto3.client('sqs', region_name=self.aws_region)
-            self.secretsmanager_client = boto3.client('secretsmanager', region_name=self.aws_region)
-            self.dynamodb_resource = boto3.resource('dynamodb', region_name=self.aws_region)
-            logger.info("AWSクライアントの初期化成功。")
+            # 環境判定
+            if os.getenv('ENV') == 'ec2':
+                # EC2環境 - IAMロール使用
+                logger.info("Using EC2 IAM Role for AWS authentication")
+                self.dynamodb_resource = boto3.resource(
+                    'dynamodb', 
+                    region_name=self.region
+                )
+                self.sqs_client = boto3.client(
+                    'sqs', 
+                    region_name=self.region
+                )
+                
+            elif os.getenv('AWS_PROFILE'):
+                # ローカル開発 - プロファイル使用
+                profile_name = os.getenv('AWS_PROFILE')
+                logger.info(f"Using AWS Profile: {profile_name}")
+                session = boto3.Session(profile_name=profile_name)
+                self.dynamodb_resource = session.resource(
+                    'dynamodb', 
+                    region_name=self.region
+                )
+                self.sqs_client = session.client(
+                    'sqs', 
+                    region_name=self.region
+                )
+                
+            else:
+                # デフォルト認証チェーン
+                # 1. 環境変数 (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+                # 2. ~/.aws/credentials のdefaultプロファイル
+                # 3. EC2インスタンスロール
+                logger.info("Using default AWS credential chain")
+                self.dynamodb_resource = boto3.resource(
+                    'dynamodb', 
+                    region_name=self.region
+                )
+                self.sqs_client = boto3.client(
+                    'sqs', 
+                    region_name=self.region
+                )
+                
+            # 接続テスト
+            self.dynamodb_resource.meta.client.list_tables(Limit=1)
+            logger.info("AWS clients initialized successfully")
+            
         except Exception as e:
-            logger.critical(f"AWSクライアントの初期化に失敗: {e}", exc_info=True)
-            self.sqs_client = None
-            self.secretsmanager_client = None
+            logger.error(f"AWS client initialization failed: {e}")
             self.dynamodb_resource = None
+            self.sqs_client = None
     
     def _validate_settings(self):
         """必須設定値の検証"""

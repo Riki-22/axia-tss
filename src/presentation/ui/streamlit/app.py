@@ -2,13 +2,27 @@
 
 import streamlit as st
 import sys
+import logging
+
+# ロガー設定
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
 from pathlib import Path
+from dotenv import load_dotenv
 
 # プロジェクトルートをパスに追加
-sys.path.append(str(Path(__file__).parent))
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+if project_root.exists():
+    load_dotenv(dotenv_path=project_root/'.env')
 
 # モジュールインポート
-from services.dynamodb_service import DynamoDBService
+from src.presentation.ui.streamlit.controllers.system_controller import get_system_controller
 from config import setup_page_config, get_custom_css
 from layouts import render_sidebar, render_header_metrics
 from pages import (
@@ -28,8 +42,8 @@ def main():
     # カスタムCSS適用
     st.markdown(get_custom_css(), unsafe_allow_html=True)
     
-    # DynamoDBサービスの初期化
-    db = init_services()
+    # システムコントローラー初期化
+    db = get_system_controller()
     
     # Kill Switch状態の取得
     kill_switch_status = db.get_kill_switch_status()
@@ -42,7 +56,7 @@ def main():
     
     # メインタブ
     chart_tab, position_tab, signal_tab, analysis_tab = st.tabs([
-        "📊 チャート", 
+        "📊 トレード", 
         "📂 ポジション",
         "⚡ シグナル", 
         "📝 分析"
@@ -60,11 +74,6 @@ def main():
     with analysis_tab:
         render_analysis_page()
 
-
-@st.cache_resource
-def init_services():
-    """サービスの初期化（キャッシュ付き）"""
-    return DynamoDBService()
 
 
 if __name__ == "__main__":
