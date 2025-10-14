@@ -151,3 +151,158 @@ git merge origin/main
 # PR作成用push
 git push origin feature/add-new-signal
 ```
+
+## 9. SAM インフラデプロイ
+
+### 実行前確認
+```bash
+# 現在の認証情報確認
+aws sts get-caller-identity --profile dev-sso
+
+# 期待される出力: Account = 837692470023
+
+# リージョン確認
+aws configure get region
+# 期待される出力: ap-northeast-1
+
+# SAM形式テンプレートの検証
+sam validate --template-file application.yaml --profile dev-sso
+
+# 期待される出力:
+# application.yaml is a valid SAM Template
+```
+
+### SAM Build
+
+```bash
+# SAMビルド実行（テンプレート検証）
+sam build --template-file application.yaml --profile dev-sso
+
+# 成功時の出力例:
+# Build Succeeded
+# Built Artifacts  : .aws-sam/build
+```
+
+### SAM Deploy
+
+#### 3-1. 初回デプロイ（対話モード）
+```bash
+sam deploy \
+  --template-file application.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1 \
+  --guided \
+  --profile dev-sso
+
+# 対話プロンプトでの推奨設定:
+# Stack Name: axia-trading-system
+# AWS Region: ap-northeast-1
+# Confirm changes before deploy: Yes
+# Allow SAM CLI IAM role creation: Yes
+# Disable rollback: No
+# Save arguments to configuration file: Yes
+# Configuration file name: samconfig.toml
+```
+
+#### 3-2. 変更セット確認
+デプロイ前に、以下のような変更セットが表示：
+
+```
+CloudFormation stack changeset
+---------------------------------
+Operation                     LogicalResourceId              ResourceType
+---------------------------------
++ Add                         ElastiCacheSubnetGroup         AWS::ElastiCache::SubnetGroup
++ Add                         RedisSecurityGroup             AWS::EC2::SecurityGroup
++ Add                         TSSRedisCluster                AWS::ElastiCache::CacheCluster
++ Add                         RedisEndpointParameter         AWS::SSM::Parameter
++ Add                         RedisPortParameter             AWS::SSM::Parameter
+* Modify                      IAMRoleTSSEC2Role              AWS::IAM::Role
+---------------------------------
+```
+
+#### 3-3. デプロイ実行確認
+```
+Deploy this changeset? [y/N]: y
+```
+
+#### 3-4. デプロイ進行確認
+```bash
+# 別ターミナルでスタック状態監視
+watch -n 5 'aws cloudformation describe-stacks \
+  --stack-name axia-trading-system \
+  --query "Stacks[0].StackStatus" \
+  --output text'
+
+# 期待される状態遷移:
+# UPDATE_IN_PROGRESS → UPDATE_COMPLETE_CLEANUP_IN_PROGRESS → UPDATE_COMPLETE
+```
+
+**⏱️ 所要時間**: 約12-15分（ElastiCacheクラスタ作成時間）
+
+### デプロイ検証
+
+#### 4-1. スタック状態確認
+```bash
+aws cloudformation describe-stacks \
+  --stack-name axia-trading-system \
+  --query "Stacks[0].[StackStatus, LastUpdatedTime]" \
+  --output table
+
+# 期待される出力:
+# StackStatus: UPDATE_COMPLETE
+```
+
+#### 4-2. Redis情報取得
+```bash
+# Redis Endpoint取得
+aws cloudformation describe-stacks \
+  --stack-name axia-trading-system \
+  --query "Stacks[0].Outputs[?OutputKey=='RedisEndpoint'].OutputValue" \
+  --output text
+
+# 出力例: tss-market-data-cache.abc123.0001.apne1.cache.amazonaws.com
+
+# Redis Port取得
+aws cloudformation describe-stacks \
+  --stack-name axia-trading-system \
+  --query "Stacks[0].Outputs[?OutputKey=='RedisPort'].OutputValue" \
+  --output text
+
+# 出力例: 6379
+```
+
+#### 4-3. Parameter Store確認
+```bash
+# Parameter Store に保存された接続情報確認
+aws ssm get-parameter --name "/tss/redis/endpoint" --query "Parameter.Value" --output text
+aws ssm get-parameter --name "/tss/redis/port" --query "Parameter.Value" --output text
+```
+
+#### 4-4. Redis クラスタ状態確認
+```bash
+aws elasticache describe-cache-clusters \
+  --cache-cluster-id tss-market-data-cache \
+  --show-cache-node-info \
+  --query "CacheClusters[0].[CacheClusterStatus, CacheNodeType, EngineVersion]" \
+  --output table
+
+# 期待される出力:
+# Status: available
+# NodeType: cache.t4g.micro
+# EngineVersion: 7.1
+```
+
+### デプロイロールバック発生時
+```bash
+# スタックイベント確認
+aws cloudformation describe-stack-events \
+  --stack-name axia-trading-system \
+  --max-items 20 \
+  --query "StackEvents[?ResourceStatus=='CREATE_FAILED']"
+
+# 問題解決後、再デプロイ
+sam deploy --template-file application.yaml --stack-name axia-trading-system
+```
+
+---

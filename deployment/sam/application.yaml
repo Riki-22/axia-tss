@@ -182,11 +182,6 @@ Resources:
           ToPort: 3389
           CidrIp: !Ref AllowedSshCidr
           Description: "RDP access from allowed IP"
-        - IpProtocol: tcp
-          FromPort: 2049
-          ToPort: 2049
-          SourceSecurityGroupId: !Ref TSSServerSecurityGroup
-          Description: "NFS access from same security group"
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: "0.0.0.0/0"
@@ -194,6 +189,17 @@ Resources:
       Tags:
         - Key: "Name"
           Value: "TSS-Server-SG"
+
+  # セキュリティグループ自己参照ルール（循環依存回避のため別リソース）
+  TSSServerSecurityGroupSelfIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref TSSServerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref TSSServerSecurityGroup
+      Description: "NFS access from same security group"
 
   TSSElasticIP:
     Type: AWS::EC2::EIP
@@ -236,14 +242,7 @@ Resources:
       PrivateIpAddress: !Ref Ec2PrivateIp
       SecurityGroupIds:
         - !GetAtt TSSServerSecurityGroup.GroupId
-      BlockDeviceMappings:
-        - DeviceName: "/dev/sda1"
-          Ebs:
-            VolumeSize: 30
-            VolumeType: "gp3"
-            Iops: 3000
-            DeleteOnTermination: true
-            Encrypted: false
+      # BlockDeviceMappingsを削除 - 独立ボリューム使用のため
       EbsOptimized: true
       Monitoring: false
       CpuOptions:
@@ -256,6 +255,23 @@ Resources:
           Value: "TSS-MT5-Server"
         - Key: "Project"
           Value: "AXIA"
+
+  # ボリュームアタッチメント（データ永続性のため独立管理）
+  TSSVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      Device: "/dev/sda1"
+      InstanceId: !Ref TssEc2Instance
+      VolumeId: !Ref TSSEBSVolume
+      # EC2削除時もボリュームは保持（データ保護）
+      DeleteOnTermination: false
+
+  # Elastic IP関連付け
+  TSSEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref TssEc2Instance
+      AllocationId: !GetAtt TSSElasticIP.AllocationId
 
   # ==========================================
   # Redis Cache Infrastructure
@@ -445,6 +461,12 @@ Outputs:
     Value: !Ref TSSElasticIP
     Export:
       Name: !Sub "${AWS::StackName}-ElasticIp"
+
+  Ec2PublicIp:
+    Description: "EC2 Public IP Address (via EIP)"
+    Value: !Ref TSSElasticIP
+    Export:
+      Name: !Sub "${AWS::StackName}-Ec2PublicIp"
 
   RedisEndpoint:
     Description: "Redis cluster endpoint address"
