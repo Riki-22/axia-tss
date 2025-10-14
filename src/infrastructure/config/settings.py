@@ -66,6 +66,11 @@ class Settings:
         self.redis_db = self.redis.redis_db
         self.redis_ttl_hours = self.redis.redis_ttl_hours
         self.redis_max_memory_mb = self.redis.redis_max_memory_mb
+        self.redis_socket_timeout = self.redis.redis_socket_timeout  
+        self.redis_socket_connect_timeout = self.redis.redis_socket_connect_timeout  
+        self.redis_retry_on_timeout = self.redis.redis_retry_on_timeout  
+        self.redis_decode_responses = self.redis.redis_decode_responses  
+        self.redis_max_connections = self.redis.redis_max_connections  
         self.redis_client = self.redis.redis_client
         
         # Data Collector
