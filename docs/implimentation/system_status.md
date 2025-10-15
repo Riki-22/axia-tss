@@ -92,7 +92,7 @@ class SystemHealth:
 
 ```python
 from abc import ABC, abstractmethod
-from domain.entities.system_status import ConnectionStatus
+from src.domain.entities.system_status import ConnectionStatus
 
 class IConnectionChecker(ABC):
     """接続チェッカーの共通インターフェース"""
@@ -118,8 +118,8 @@ from datetime import datetime
 from typing import Optional
 import logging
 
-from domain.repositories.connection_checker import IConnectionChecker
-from domain.entities.system_status import ConnectionStatus, ServiceStatus
+from src.domain.repositories.connection_checker import IConnectionChecker
+from src.domain.entities.system_status import ConnectionStatus, ServiceStatus
 from infrastructure.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -347,9 +347,9 @@ from datetime import datetime
 from typing import List, Dict, Optional
 import logging
 
-from domain.entities.system_status import SystemHealth, ServiceStatus
-from domain.repositories.kill_switch_repository import IKillSwitchRepository
-from domain.repositories.connection_checker import IConnectionChecker
+from src.domain.entities.system_status import SystemHealth, ServiceStatus
+from src.domain.repositories.kill_switch_repository import IKillSwitchRepository
+from src.domain.repositories.connection_checker import IConnectionChecker
 
 logger = logging.getLogger(__name__)
 

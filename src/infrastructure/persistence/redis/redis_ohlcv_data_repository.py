@@ -10,7 +10,7 @@ import numpy as np
 import msgpack
 import pytz
 
-from domain.repositories.ohlcv_data_repository import IOhlcvDataRepository
+from src.domain.repositories.ohlcv_data_repository import IOhlcvDataRepository
 from .redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
