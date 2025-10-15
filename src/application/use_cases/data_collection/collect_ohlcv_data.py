@@ -95,7 +95,7 @@ class CollectOhlcvDataUseCase:
                     
                     df = self.mt5_data_collector.fetch_ohlcv_data(
                         symbol=symbol,
-                        timeframe=timeframe,
+                        timeframe_int=timeframe,
                         count=fetch_count
                     )
                     

@@ -54,7 +54,7 @@ class TestOhlcvDataProvider:
         
         assert stats['total_requests'] == 0
         assert stats['cache_hit_rate'] == 0.0
-        assert len(stats['source_usage']) == 0
+        assert len(stats['source_usage']) == 4
     
     # ========================================
     # _get_source_priority() テスト

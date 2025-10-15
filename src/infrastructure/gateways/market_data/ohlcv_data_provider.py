@@ -8,9 +8,8 @@ from typing import Optional, List, Tuple, Dict, Any
 import pandas as pd
 import pytz
 
-from src.infrastructure.persistence.redis.redis_ohlcv_data_repository import RedisOhlcvDataRepository
+from src.domain.repositories.ohlcv_data_repository import IOhlcvDataRepository
 from src.infrastructure.gateways.brokers.mt5.mt5_data_collector import MT5DataCollector
-from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +39,9 @@ class OhlcvDataProvider:
     
     def __init__(
         self,
-        ohlcv_cache: RedisOhlcvDataRepository,
+        ohlcv_cache: IOhlcvDataRepository,
         mt5_data_collector: Optional[MT5DataCollector] = None,
-        s3_repository: Optional[S3OhlcvDataRepository] = None,
+        s3_repository: Optional[IOhlcvDataRepository] = None,
         yfinance_client: Optional[Any] = None
     ):
         """
