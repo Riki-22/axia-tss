@@ -1,5 +1,32 @@
 # src/infrastructure/persistence/s3/s3_ohlcv_data_repository.py
-"""S3永続化リポジトリ - IOhlcvDataRepository実装"""
+"""S3永続化リポジトリ - IOhlcvDataRepository実装
+
+このモジュールは、S3をコールドストレージとして使用し、
+過去データの長期保存を担当するリポジトリ実装を提供します。
+
+特徴:
+- Parquet形式での効率的な保存
+- 日付ベースパーティショニング (Hive形式)
+- 期間指定読み込み対応
+- 重複排除・ソート機能
+
+パーティション構造:
+    symbol={symbol}/timeframe={timeframe}/source=mt5/year={year}/month={month}/day={day}/
+    └─ {symbol}_{timeframe}_{timestamp}.parquet
+
+使用例:
+    >>> from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
+    >>> import boto3
+    >>> 
+    >>> s3_client = boto3.client('s3')
+    >>> repo = S3OhlcvDataRepository('my-bucket', s3_client)
+    >>> 
+    >>> # データ保存
+    >>> repo.save_ohlcv(df, 'USDJPY', 'H1')
+    >>> 
+    >>> # データ読み込み（30日分）
+    >>> df = repo.load_ohlcv('USDJPY', 'H1', days=30)
+"""
 
 import io
 import os
@@ -26,14 +53,29 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
     - Parquet形式での効率的な保存
     - 日付ベースパーティショニング
     - 期間指定読み込み対応
+    - メモリ効率的な逐次処理
+    
+    Attributes:
+        bucket_name (str): S3バケット名
+        s3_client: boto3 S3クライアント
+    
+    Note:
+        - Phase 2: 逐次処理（シンプルで安定）
+        - Phase 3計画: 並列処理での最適化を検討
     """
     
     def __init__(self, bucket_name: str, s3_client):
         """
         Args:
             bucket_name: S3バケット名
-            s3_client: boto3 S3クライアント
+            s3_client: boto3 S3クライアント (boto3.client('s3'))
+        
+        Raises:
+            ValueError: bucket_nameが空の場合
         """
+        if not bucket_name:
+            raise ValueError("bucket_name must not be empty")
+        
         self.bucket_name = bucket_name
         self.s3_client = s3_client
         logger.info(f"S3OhlcvDataRepository initialized: bucket={bucket_name}")
@@ -54,15 +96,29 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
         実装詳細:
         - Parquet形式で保存
         - 日付ベースのパーティション構造
-        - パス: symbol={symbol}/timeframe={timeframe}/year={year}/month={month}/day={day}/
+        - パス: symbol={symbol}/timeframe={timeframe}/source=mt5/
+                year={year}/month={month}/day={day}/
         
         Args:
             df: OHLCVデータ
-            symbol: 通貨ペアシンボル
-            timeframe: タイムフレーム
+                必須カラム: ['timestamp_utc', 'open', 'high', 'low', 'close', 'volume']
+            symbol: 通貨ペアシンボル (例: "USDJPY")
+            timeframe: タイムフレーム (例: "H1", "M15", "D1")
         
         Returns:
-            bool: 保存成功時True
+            bool: 保存成功時True、失敗時False
+        
+        Example:
+            >>> df = pd.DataFrame({
+            ...     'timestamp_utc': [datetime(2025, 10, 15, 12, 0, tzinfo=pytz.UTC)],
+            ...     'open': [150.0], 'high': [150.5], 'low': [149.5],
+            ...     'close': [150.2], 'volume': [1000]
+            ... })
+            >>> success = repo.save_ohlcv(df, 'USDJPY', 'H1')
+        
+        Note:
+            - 空のDataFrameはスキップされる
+            - 既存ファイルがあっても上書きされる（タイムスタンプで区別）
         """
         if df is None or df.empty:
             logger.info(
@@ -111,7 +167,8 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
             
             logger.info(
                 f"S3へのアップロード成功: "
-                f"s3://{self.bucket_name}/{s3_full_key}"
+                f"s3://{self.bucket_name}/{s3_full_key} "
+                f"({len(df)} rows)"
             )
             
             return True
@@ -138,19 +195,54 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
         - 日付範囲からパーティションキーを生成
         - 各パーティションを逐次読み込み
         - DataFrame結合・ソート・重複排除
+        - 期間フィルタリング
         
         Args:
-            symbol: 通貨ペアシンボル
-            timeframe: タイムフレーム
+            symbol: 通貨ペアシンボル (例: "USDJPY")
+            timeframe: タイムフレーム (例: "H1", "M15", "D1")
             start_date: 開始日時（UTC）
             end_date: 終了日時（UTC）
-            days: 取得日数
+            days: 取得日数（end_dateからN日前まで）
         
         Returns:
-            pd.DataFrame or None
+            pd.DataFrame or None: OHLCVデータ（index=通番、timestamp_utcはカラム）
+                データが存在しない場合はNone
+        
+        優先順位:
+            1. start_date + end_date が指定されている場合: それを使用
+            2. days のみ指定: end_date=現在、start_date=現在-days
+            3. 何も指定なし: エラー（start_dateとend_dateの両方が必要）
+        
+        処理フロー:
+            1. 期間の正規化（UTCへの変換）
+            2. パーティションキーリスト生成
+            3. 各パーティションを逐次読み込み
+            4. DataFrame結合
+            5. timestamp_utcをインデックスに設定
+            6. ソート・重複排除
+            7. 期間フィルタリング
+            8. インデックスをリセットして返却
+        
+        Example:
+            # 過去30日分
+            >>> df = repo.load_ohlcv('USDJPY', 'H1', days=30)
+            
+            # 期間指定
+            >>> df = repo.load_ohlcv(
+            ...     'USDJPY', 'H1',
+            ...     start_date=datetime(2025, 10, 1, tzinfo=pytz.UTC),
+            ...     end_date=datetime(2025, 10, 15, tzinfo=pytz.UTC)
+            ... )
+        
+        Note:
+            - AsIs: シンプルな逐次処理
+            - ToBe: 並列処理で最適化予定（Phase 3）
+            - 重複データは自動的に排除される（keep='last'）
+        
+        Raises:
+            ValueError: start_dateとend_dateの両方が指定されていない場合
         """
-
-        # 期間の正規化
+        # 1. 期間の正規化
         if days is not None and start_date is None:
             end_date = datetime.now(pytz.UTC)
             start_date = end_date - timedelta(days=days)
@@ -170,66 +262,137 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
             f"{start_date.date()} to {end_date.date()}"
         )
         
-        # パーティションキー生成
+        # 2. パーティションキー生成
         partition_keys = self._generate_partition_keys(
             symbol, timeframe, start_date, end_date
         )
         
         if not partition_keys:
-            logger.warning(f"No partition keys generated for {symbol}/{timeframe}")
+            logger.warning(
+                f"No partition keys generated for {symbol}/{timeframe}"
+            )
             return None
         
-        logger.debug(f"Generated {len(partition_keys)} partition keys")
+        logger.info(
+            f"Loading {len(partition_keys)} partition(s) sequentially"
+        )
         
-        # 各パーティションを読み込み
-        dfs = []
-        for key in partition_keys:
-            df = self._load_partition(key)
-            if df is not None and not df.empty:
-                dfs.append(df)
+        # 3. 各パーティションを逐次読み込み
+        dataframes = []
+        loaded_count = 0
+        skipped_count = 0
         
-        if not dfs:
+        for i, key in enumerate(partition_keys, 1):
+            try:
+                logger.debug(
+                    f"Loading partition {i}/{len(partition_keys)}: {key}"
+                )
+                
+                df_partition = self._load_partition(key)
+                
+                if df_partition is not None and not df_partition.empty:
+                    dataframes.append(df_partition)
+                    loaded_count += 1
+                    logger.debug(
+                        f"Loaded {len(df_partition)} rows from partition {i}"
+                    )
+                else:
+                    skipped_count += 1
+                    logger.debug(
+                        f"Partition {i} is empty or does not exist"
+                    )
+                    
+            except Exception as e:
+                logger.error(
+                    f"Failed to load partition {key}: {e}",
+                    exc_info=True
+                )
+                # エラーがあっても他のパーティションは処理継続
+                skipped_count += 1
+                continue
+        
+        logger.info(
+            f"Partition loading complete: "
+            f"{loaded_count} loaded, {skipped_count} skipped"
+        )
+        
+        # データが1つも取得できなかった場合
+        if not dataframes:
             logger.warning(
                 f"No valid data retrieved from S3 for {symbol}/{timeframe}"
             )
             return None
         
-        # DataFrame結合
-        combined_df = pd.concat(dfs, ignore_index=True)
-        
-        # timestamp_utcカラムを確認・変換
-        if 'timestamp_utc' not in combined_df.columns:
-            logger.error("timestamp_utc column not found in data")
+        # 4. DataFrame結合・後処理
+        try:
+            # 結合
+            full_df = pd.concat(dataframes, ignore_index=True)
+            logger.debug(
+                f"Concatenated {len(dataframes)} dataframes, "
+                f"total {len(full_df)} rows"
+            )
+            
+            # メモリ解放
+            del dataframes
+            
+            # 5. timestamp_utcカラムを確認・変換
+            if 'timestamp_utc' not in full_df.columns:
+                logger.error("timestamp_utc column not found in data")
+                return None
+            
+            # datetime型に変換（必要に応じて）
+            if not pd.api.types.is_datetime64_any_dtype(full_df['timestamp_utc']):
+                full_df['timestamp_utc'] = pd.to_datetime(
+                    full_df['timestamp_utc'], utc=True
+                )
+                logger.debug("Converted timestamp_utc to datetime type")
+            
+            # タイムゾーン設定（必要に応じて）
+            if full_df['timestamp_utc'].dt.tz is None:
+                full_df['timestamp_utc'] = full_df['timestamp_utc'].dt.tz_localize('UTC')
+            
+            # 6. ソート
+            full_df = full_df.sort_values('timestamp_utc')
+            
+            # 7. 期間フィルタリング
+            full_df = full_df[
+                (full_df['timestamp_utc'] >= start_date) &
+                (full_df['timestamp_utc'] <= end_date)
+            ]
+            
+            # 8. 重複排除（最新データを保持）
+            duplicates = full_df['timestamp_utc'].duplicated(keep='last')
+            if duplicates.any():
+                duplicate_count = duplicates.sum()
+                logger.warning(
+                    f"Found {duplicate_count} duplicate timestamps, removing..."
+                )
+                full_df = full_df[~duplicates]
+            
+            # 9. インデックス設定
+            full_df = full_df.set_index('timestamp_utc')
+            
+            if full_df.empty:
+                logger.warning(
+                    f"No data found in specified date range "
+                    f"{start_date.date()} to {end_date.date()}"
+                )
+                return None
+            
+            logger.info(
+                f"Successfully loaded {len(full_df)} rows "
+                f"for {symbol}/{timeframe}"
+            )
+            
+            # インデックスをリセットしてカラムに戻す
+            return full_df.reset_index()
+            
+        except Exception as e:
+            logger.error(
+                f"Error during DataFrame processing: {e}",
+                exc_info=True
+            )
             return None
-        
-        # datetime型に変換（必要に応じて）
-        if not pd.api.types.is_datetime64_any_dtype(combined_df['timestamp_utc']):
-            combined_df['timestamp_utc'] = pd.to_datetime(combined_df['timestamp_utc'])
-        
-        # タイムゾーン設定
-        if combined_df['timestamp_utc'].dt.tz is None:
-            combined_df['timestamp_utc'] = combined_df['timestamp_utc'].dt.tz_localize('UTC')
-        
-        # ソート
-        combined_df = combined_df.sort_values('timestamp_utc')
-        
-        # 期間フィルタリング
-        combined_df = combined_df[
-            (combined_df['timestamp_utc'] >= start_date) &
-            (combined_df['timestamp_utc'] <= end_date)
-        ]
-        
-        # 重複排除
-        combined_df = combined_df.drop_duplicates(
-            subset=['timestamp_utc'], keep='last'
-        )
-        
-        # インデックス設定
-        combined_df = combined_df.set_index('timestamp_utc')
-        
-        logger.info(f"Loaded {len(combined_df)} rows from S3")
-        
-        return combined_df if not combined_df.empty else None
     
     def exists(
         self,
@@ -246,9 +409,22 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
             date: 確認する日付（Noneの場合は最新データ）
         
         Returns:
-            bool: データが存在するか
+            bool: データが存在する場合True
+        
+        Example:
+            # 特定日のデータ存在確認
+            >>> exists = repo.exists(
+            ...     'USDJPY', 'H1', 
+            ...     datetime(2025, 10, 15, tzinfo=pytz.UTC)
+            ... )
+            
+            # 最新データの存在確認
+            >>> exists = repo.exists('USDJPY', 'H1')
+        
+        Note:
+            - パーティション内に1つでもParquetファイルがあればTrue
+            - ファイルの内容は検証しない（高速化のため）
         """
-
         try:
             if date is None:
                 date = datetime.now(pytz.UTC)
@@ -275,17 +451,26 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
                 MaxKeys=1  # 1つでもあればOK
             )
             
-            exists = 'Contents' in response and len(response['Contents']) > 0
+            # Parquetファイルの存在確認
+            if 'Contents' in response and len(response['Contents']) > 0:
+                for obj in response['Contents']:
+                    if obj['Key'].endswith('.parquet'):
+                        logger.debug(
+                            f"Existence check for {symbol}/{timeframe} "
+                            f"on {date.date()}: True"
+                        )
+                        return True
             
             logger.debug(
-                f"Existence check for {symbol}/{timeframe} on {date.date()}: {exists}"
+                f"Existence check for {symbol}/{timeframe} "
+                f"on {date.date()}: False"
             )
-            
-            return exists
+            return False
             
         except Exception as e:
             logger.error(
-                f"Error checking existence for {symbol}/{timeframe} on {date}: {e}"
+                f"Error checking existence for {symbol}/{timeframe} "
+                f"on {date}: {e}"
             )
             return False
     
@@ -299,7 +484,8 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
         
         実装詳細:
         - S3のパーティション一覧から判定
-        - 実際のParquetファイルは読み込まない
+        - 実際のParquetファイルは読み込まない（高速化のため）
+        - 日付単位の精度（時刻は00:00:00）
         
         Args:
             symbol: 通貨ペアシンボル
@@ -308,10 +494,27 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
         Returns:
             Tuple[datetime, datetime]: (最古日時, 最新日時)
             None: データが存在しない場合
+        
+        Example:
+            >>> range_tuple = repo.get_available_range('USDJPY', 'H1')
+            >>> if range_tuple:
+            ...     start, end = range_tuple
+            ...     print(f"Data available from {start} to {end}")
+        
+        Note:
+            - パーティション構造から日付を抽出
+            - 実際のデータ内容は確認しない
+            - パフォーマンス重視の設計
         """
         try:
             # パーティションプレフィックス
-            prefix = f"symbol={symbol}/timeframe={timeframe}/"
+            prefix = (
+                f"symbol={symbol}/"
+                f"timeframe={timeframe}/"
+                f"source=mt5/"
+            )
+            
+            logger.debug(f"Getting available range for prefix: {prefix}")
             
             # S3オブジェクト一覧取得
             response = self.s3_client.list_objects_v2(
@@ -320,6 +523,9 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
             )
             
             if 'Contents' not in response:
+                logger.info(
+                    f"No data found for {symbol}/{timeframe}"
+                )
                 return None
             
             # パーティションから日付を抽出
@@ -343,16 +549,31 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
                     dates.append(date)
             
             if not dates:
+                logger.info(
+                    f"No valid dates found for {symbol}/{timeframe}"
+                )
                 return None
             
-            return (min(dates), max(dates))
+            # 最古と最新を取得
+            min_date = min(dates)
+            max_date = max(dates)
+            
+            logger.info(
+                f"Data range for {symbol}/{timeframe}: "
+                f"{min_date.date()} to {max_date.date()}"
+            )
+            
+            return (min_date, max_date)
             
         except Exception as e:
-            logger.error(f"データ範囲取得エラー: {e}", exc_info=True)
+            logger.error(
+                f"Error getting available range for {symbol}/{timeframe}: {e}",
+                exc_info=True
+            )
             return None
     
     # ========================================
-    # 内部メソッド
+    # 内部メソッド（プライベート）
     # ========================================
     
     def _generate_partition_keys(
@@ -365,14 +586,33 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
         """
         日付範囲からS3パーティションキーリストを生成
         
+        日付を1日ずつ進めてパーティションプレフィックスを生成します。
+        時刻情報は無視され、00:00:00で正規化されます。
+        
         Args:
-            symbol: 通貨ペアシンボル
-            timeframe: タイムフレーム
-            start_date: 開始日
-            end_date: 終了日
+            symbol: 通貨ペア（例: 'USDJPY'）
+            timeframe: タイムフレーム（例: 'H1'）
+            start_date: 開始日時（UTC、時刻は無視される）
+            end_date: 終了日時（UTC、時刻は無視される）
         
         Returns:
-            List[str]: S3キーのリスト
+            List[str]: S3パーティションプレフィックスのリスト
+        
+        Example:
+            start_date: 2025-10-01 12:00:00 UTC
+            end_date: 2025-10-03 18:30:00 UTC
+            
+            結果:
+            [
+                'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=01/',
+                'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=02/',
+                'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=03/'
+            ]
+        
+        Note:
+            - 日付単位でパーティション分割
+            - 時刻情報は00:00:00で正規化
+            - start_date, end_dateともに含む（両端含む）
         """
         keys = []
         
@@ -384,9 +624,14 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
             hour=0, minute=0, second=0, microsecond=0
         )
         
+        logger.debug(
+            f"Generating partition keys from {current_date.date()} "
+            f"to {end_date_normalized.date()}"
+        )
+        
         # 日付範囲をループ
         while current_date <= end_date_normalized:
-            # S3キー生成
+            # S3キー生成（save_ohlcvと同じ構造）
             key = (
                 f"symbol={symbol}/"
                 f"timeframe={timeframe}/"
@@ -401,57 +646,138 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
             # 次の日へ
             current_date += timedelta(days=1)
         
+        logger.debug(
+            f"Generated {len(keys)} partition keys for "
+            f"{symbol}/{timeframe}"
+        )
+        
         return keys
     
-    def _load_partition(self, key: str) -> Optional[pd.DataFrame]:
+    def _load_partition(self, partition_prefix: str) -> Optional[pd.DataFrame]:
         """
         単一パーティションからParquetファイルを読み込み
         
+        パーティション内の全Parquetファイルを読み込み、結合して返します。
+        複数ファイルがある場合は自動的にマージされます。
+        
         Args:
-            key: S3キープレフィックス
+            partition_prefix: S3パーティションプレフィックス
+                例: 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/'
         
         Returns:
-            pd.DataFrame or None
+            pd.DataFrame: OHLCVデータ（index=通番）
+            None: ファイルが存在しない場合
+        
+        処理フロー:
+            1. パーティション内のオブジェクト一覧を取得
+            2. Parquetファイルのみフィルタリング
+            3. 各ファイルを読み込み
+            4. 複数ある場合はDataFrame結合
+        
+        Raises:
+            ClientError: S3アクセスエラー（NoSuchKey以外）
+            ValueError: Parquetフォーマットエラー
+        
+        Note:
+            - NoSuchKeyの場合はNoneを返す（エラーではない）
+            - 個別ファイルのエラーは続行（ロバスト性重視）
+            - Document 2の堅牢なアプローチを採用（全ファイル読み込み）
         """
         try:
-            # パーティション内のファイル一覧を取得
+            # パーティション内のオブジェクト一覧を取得
             response = self.s3_client.list_objects_v2(
                 Bucket=self.bucket_name,
-                Prefix=key
+                Prefix=partition_prefix
             )
             
-            if 'Contents' not in response:
-                logger.debug(f"パーティションが存在しません: {key}")
+            # ファイルが存在しない場合
+            if 'Contents' not in response or len(response['Contents']) == 0:
+                logger.debug(
+                    f"No files found in partition: {partition_prefix}"
+                )
                 return None
             
-            # 最新のファイルを取得
-            files = [obj['Key'] for obj in response['Contents']]
-            if not files:
+            # Parquetファイルのみフィルタリング
+            parquet_files = [
+                obj['Key'] for obj in response['Contents']
+                if obj['Key'].endswith('.parquet')
+            ]
+            
+            if not parquet_files:
+                logger.debug(
+                    f"No parquet files in partition: {partition_prefix}"
+                )
                 return None
             
-            # 最新のファイル（アルファベット順で最後）
-            latest_file = sorted(files)[-1]
-            
-            logger.debug(f"パーティション読み込み: {latest_file}")
-            
-            # S3からParquet読み込み
-            obj = self.s3_client.get_object(
-                Bucket=self.bucket_name,
-                Key=latest_file
+            logger.debug(
+                f"Found {len(parquet_files)} parquet file(s) in {partition_prefix}"
             )
             
-            df = pd.read_parquet(io.BytesIO(obj['Body'].read()))
+            # 各Parquetファイルを読み込み
+            dataframes = []
+            for key in parquet_files:
+                try:
+                    # S3からファイル取得
+                    obj_response = self.s3_client.get_object(
+                        Bucket=self.bucket_name,
+                        Key=key
+                    )
+                    
+                    # Parquet読み込み
+                    buffer = io.BytesIO(obj_response['Body'].read())
+                    df = pd.read_parquet(buffer, engine='pyarrow')
+                    
+                    if df is not None and not df.empty:
+                        dataframes.append(df)
+                        logger.debug(
+                            f"Loaded {len(df)} rows from {key}"
+                        )
+                    
+                except Exception as e:
+                    logger.error(
+                        f"Failed to load parquet file {key}: {e}"
+                    )
+                    # 個別ファイルのエラーは続行（ロバスト性重視）
+                    continue
             
-            return df
+            # DataFrameが1つもない場合
+            if not dataframes:
+                logger.warning(
+                    f"Failed to load any data from partition: {partition_prefix}"
+                )
+                return None
+            
+            # 複数ファイルがある場合は結合
+            if len(dataframes) == 1:
+                result_df = dataframes[0]
+            else:
+                result_df = pd.concat(dataframes, ignore_index=True)
+                logger.debug(
+                    f"Merged {len(dataframes)} dataframes, "
+                    f"total {len(result_df)} rows"
+                )
+            
+            return result_df
             
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchKey':
-                logger.debug(f"ファイルが存在しません: {key}")
+                # パーティションが存在しない（正常ケース）
+                logger.debug(
+                    f"Partition does not exist: {partition_prefix}"
+                )
                 return None
             else:
-                logger.error(f"S3読み込みエラー: {e}", exc_info=True)
-                return None
+                # その他のS3エラー（権限エラー等）
+                logger.error(
+                    f"S3 ClientError accessing partition "
+                    f"{partition_prefix}: {e}"
+                )
+                raise
         
         except Exception as e:
-            logger.error(f"パーティション読み込みエラー: {e}", exc_info=True)
-            return None
+            # その他の予期しないエラー
+            logger.error(
+                f"Unexpected error loading partition {partition_prefix}: {e}",
+                exc_info=True
+            )
+            raise
