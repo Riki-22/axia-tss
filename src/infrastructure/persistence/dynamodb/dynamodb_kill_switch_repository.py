@@ -2,7 +2,7 @@
 import logging
 from typing import Optional, Dict
 from datetime import datetime
-from domain.repositories.kill_switch_repository import IKillSwitchRepository
+from src.domain.repositories.kill_switch_repository import IKillSwitchRepository
 
 logger = logging.getLogger(__name__)
 
