@@ -2,7 +2,7 @@
 """Redis永続化レイヤー"""
 
 from .redis_client import RedisClient
-from .price_cache import PriceCacheRepository
+from .price_cache_repository import PriceCacheRepository
 
 __all__ = [
     'RedisClient',

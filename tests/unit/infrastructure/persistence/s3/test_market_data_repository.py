@@ -317,6 +317,145 @@ class TestS3MarketDataRepository:
         
         # NoSuchKeyの場合はNoneを返す（例外を投げない）
         assert result is None
+    
+    # ========================================
+    # load_ohlcv() テスト
+    # ========================================
+    
+    def test_load_ohlcv_with_days(self):
+        """days指定でデータ読み込み"""
+        import pandas as pd
+        import io
+        
+        # モックデータ準備
+        test_df = pd.DataFrame({
+            'timestamp_utc': pd.date_range('2025-10-15', periods=24, freq='H'),
+            'open': [100.0] * 24,
+            'high': [101.0] * 24,
+            'low': [99.0] * 24,
+            'close': [100.5] * 24,
+            'volume': [1000] * 24
+        })
+        
+        buffer = io.BytesIO()
+        test_df.to_parquet(buffer, index=False)
+        buffer.seek(0)
+        
+        # S3モック設定
+        self.s3_client.list_objects_v2.return_value = {
+            'Contents': [
+                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/data.parquet'}
+            ]
+        }
+        self.s3_client.get_object.return_value = {
+            'Body': buffer
+        }
+        
+        # テスト実行（days=1）
+        result = self.repo.load_ohlcv('USDJPY', 'H1', days=1)
+        
+        assert result is not None
+        assert len(result) > 0
+        assert 'timestamp_utc' in result.columns
+    
+    def test_load_ohlcv_with_date_range(self):
+        """start_date/end_date指定でデータ読み込み"""
+        import pandas as pd
+        import io
+        
+        # 3日分のモックデータ
+        test_df = pd.DataFrame({
+            'timestamp_utc': pd.date_range('2025-10-13', periods=72, freq='H'),
+            'open': [100.0] * 72,
+            'high': [101.0] * 72,
+            'low': [99.0] * 72,
+            'close': [100.5] * 72,
+            'volume': [1000] * 72
+        })
+        
+        buffer = io.BytesIO()
+        test_df.to_parquet(buffer, index=False)
+        buffer.seek(0)
+        
+        # S3モック設定
+        self.s3_client.list_objects_v2.return_value = {
+            'Contents': [
+                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=13/data.parquet'}
+            ]
+        }
+        self.s3_client.get_object.return_value = {
+            'Body': buffer
+        }
+        
+        # テスト実行
+        start = datetime(2025, 10, 13, tzinfo=pytz.UTC)
+        end = datetime(2025, 10, 15, tzinfo=pytz.UTC)
+        
+        result = self.repo.load_ohlcv(
+            'USDJPY', 'H1',
+            start_date=start,
+            end_date=end
+        )
+        
+        assert result is not None
+        assert len(result) > 0
+    
+    def test_load_ohlcv_no_data(self):
+        """データが存在しない場合"""
+        # 空のレスポンス
+        self.s3_client.list_objects_v2.return_value = {}
+        
+        result = self.repo.load_ohlcv('USDJPY', 'H1', days=30)
+        
+        assert result is None
+    
+    # ========================================
+    # exists() テスト
+    # ========================================
+    
+    def test_exists_true(self):
+        """データが存在する場合"""
+        # S3モック設定
+        self.s3_client.list_objects_v2.return_value = {
+            'Contents': [
+                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/data.parquet'}
+            ]
+        }
+        
+        result = self.repo.exists(
+            'USDJPY', 'H1',
+            datetime(2025, 10, 15, tzinfo=pytz.UTC)
+        )
+        
+        assert result is True
+    
+    def test_exists_false(self):
+        """データが存在しない場合"""
+        # 空のレスポンス
+        self.s3_client.list_objects_v2.return_value = {}
+        
+        result = self.repo.exists(
+            'USDJPY', 'H1',
+            datetime(2025, 10, 15, tzinfo=pytz.UTC)
+        )
+        
+        assert result is False
+    
+    def test_exists_no_parquet_files(self):
+        """Parquetファイルが存在しない場合"""
+        # .parquet以外のファイル
+        self.s3_client.list_objects_v2.return_value = {
+            'Contents': [
+                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/data.txt'}
+            ]
+        }
+        
+        result = self.repo.exists(
+            'USDJPY', 'H1',
+            datetime(2025, 10, 15, tzinfo=pytz.UTC)
+        )
+        
+        assert result is False
 
 
 # テスト実行
