@@ -18,7 +18,7 @@ dependencies:
   - anywidget
 
   # --- 主要な分析・バックテスト用ライブラリ ---
-  - conda-forge::ta-lib
+#  - conda-forge::ta-lib
   - pandas
   - pyarrow
   - boto3
@@ -30,14 +30,18 @@ dependencies:
 
   # --- Dashboard開発用 ---
   - streamlit
-  - redis-py
+  - redis-py          # Redis Python client
   - python-dotenv
-  - watchdog  # ファイル変更監視（開発効率化）
+  - watchdog          # ファイル変更監視（開発効率化）
+
+  # --- Redis統合用 ---
+  - msgpack-python    # MessagePack シリアライゼーション
+  - pytz              # タイムゾーン処理（NYクローズ計算用）
 
   # --- pipでのみインストール可能なパッケージ ---
   - pip
   - pip:
-    - yfinance  # Yahoo Finance API（市場データ取得）
+    - yfinance        # Yahoo Finance API（市場データ取得）
     - vectorbt
     - Backtesting
-    # - MetaTrader5  # Windows環境でのみ手動インストール
+    # - MetaTrader5   # Windows環境でのみ手動インストール
