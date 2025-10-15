@@ -12,6 +12,7 @@ from .data_collector_config import DataCollectorConfig
 
 logger = logging.getLogger(__name__)
 
+
 class Settings:
     """統合設定クラス"""
     
@@ -41,7 +42,10 @@ class Settings:
     
     def _flatten_configs(self):
         """後方互換性のため、全ての設定を直接アクセス可能にする"""
-        # AWS
+        
+        # ========================================
+        # AWS設定
+        # ========================================
         self.aws_region = self.aws.aws_region
         self.queue_url = self.aws.queue_url
         self.dynamodb_table_name = self.aws.dynamodb_table_name
@@ -51,7 +55,9 @@ class Settings:
         self.secretsmanager_client = self.aws.secretsmanager_client
         self.s3_client = self.aws.s3_client
         
-        # MT5
+        # ========================================
+        # MT5設定
+        # ========================================
         self.mt5_terminal_path = self.mt5.mt5_terminal_path
         self.mt5_magic_number = self.mt5.mt5_magic_number
         self.mt5_secret_name = self.mt5.mt5_secret_name
@@ -60,20 +66,29 @@ class Settings:
         self.mt5_server = self.mt5.mt5_server
         self.timeframe_map = self.mt5.timeframe_map
         
-        # Redis
+        # ========================================
+        # Redis設定
+        # ========================================
         self.redis_endpoint = self.redis.redis_endpoint
         self.redis_port = self.redis.redis_port
         self.redis_db = self.redis.redis_db
-        self.redis_ttl_hours = self.redis.redis_ttl_hours
-        self.redis_max_memory_mb = self.redis.redis_max_memory_mb
-        self.redis_socket_timeout = self.redis.redis_socket_timeout  
-        self.redis_socket_connect_timeout = self.redis.redis_socket_connect_timeout  
-        self.redis_retry_on_timeout = self.redis.redis_retry_on_timeout  
-        self.redis_decode_responses = self.redis.redis_decode_responses  
-        self.redis_max_connections = self.redis.redis_max_connections  
-        self.redis_client = self.redis.redis_client
+        self.redis_socket_timeout = self.redis.redis_socket_timeout
+        self.redis_socket_connect_timeout = self.redis.redis_socket_connect_timeout
+        self.redis_retry_on_timeout = self.redis.redis_retry_on_timeout
+        self.redis_decode_responses = self.redis.redis_decode_responses
+        self.redis_max_connections = self.redis.redis_max_connections
         
-        # Data Collector
+        self.redis_memory_warning_mb = self.redis.redis_memory_warning_mb
+        self.redis_memory_critical_mb = self.redis.redis_memory_critical_mb
+        self.ny_close_hour_edt = self.redis.ny_close_hour_edt
+        self.ny_close_hour_est = self.redis.ny_close_hour_est
+        self.weekend_retention_hours = self.redis.weekend_retention_hours
+        self.cache_cleanup_hour = self.redis.cache_cleanup_hour
+        self.msgpack_use_bin_type = self.redis.msgpack_use_bin_type
+        
+        # ========================================
+        # Data Collector設定
+        # ========================================
         self.data_collection_symbols = self.data_collector.data_collection_symbols
         self.data_collection_timeframes = self.data_collector.data_collection_timeframes
         self.data_fetch_counts = self.data_collector.data_fetch_counts
@@ -81,6 +96,7 @@ class Settings:
     def get_mt5_credentials(self):
         """MT5認証情報を取得（後方互換性）"""
         return self.mt5.get_mt5_credentials()
+
 
 # シングルトンインスタンス
 settings = Settings()
