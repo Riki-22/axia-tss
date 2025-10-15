@@ -120,7 +120,7 @@ import logging
 
 from src.domain.repositories.connection_checker import IConnectionChecker
 from src.domain.entities.system_status import ConnectionStatus, ServiceStatus
-from infrastructure.config.settings import settings
+from src.infrastructure.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -452,13 +452,13 @@ class SystemHealthCheckUseCase:
 
 ```python
 from typing import List
-from infrastructure.monitoring.connection_checkers import (
+from src.infrastructure.monitoring.connection_checkers import (
     DynamoDBConnectionChecker,
     MT5ConnectionChecker,
     RedisConnectionChecker,
     SQSConnectionChecker
 )
-from application.use_cases.system.health_check import SystemHealthCheckUseCase
+from src.application.use_cases.system.health_check import SystemHealthCheckUseCase
 
 class DIContainer:
     """既存実装（省略）"""
@@ -498,7 +498,7 @@ class DIContainer:
 ```python
 import streamlit as st
 from typing import Optional, List
-from infrastructure.di.container import container
+from src.infrastructure.di.container import container
 
 class HealthController:
     """システムヘルスコントローラー"""

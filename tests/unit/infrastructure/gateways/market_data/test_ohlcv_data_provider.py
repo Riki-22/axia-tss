@@ -4,7 +4,7 @@
 import pytest
 from unittest.mock import Mock
 
-from infrastructure.gateways.market_data.ohlcv_data_provider import OhlcvDataProvider
+from src.infrastructure.gateways.market_data.ohlcv_data_provider import OhlcvDataProvider
 
 
 class TestOhlcvDataProvider:

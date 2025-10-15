@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple, Dict, Any
 import pandas as pd
 import pytz
 
-from infrastructure.persistence.redis.redis_ohlcv_data_repository import RedisOhlcvDataRepository
+from src.infrastructure.persistence.redis.redis_ohlcv_data_repository import RedisOhlcvDataRepository
 from src.infrastructure.gateways.brokers.mt5.mt5_data_collector import MT5DataCollector
 from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
 

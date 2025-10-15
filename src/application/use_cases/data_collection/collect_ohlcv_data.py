@@ -6,7 +6,7 @@ from typing import List, Dict
 
 from src.infrastructure.gateways.brokers.mt5.mt5_data_collector import MT5DataCollector
 from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
-from infrastructure.persistence.redis.redis_ohlcv_data_repository import RedisOhlcvDataRepository
+from src.infrastructure.persistence.redis.redis_ohlcv_data_repository import RedisOhlcvDataRepository
 
 logger = logging.getLogger(__name__)
 

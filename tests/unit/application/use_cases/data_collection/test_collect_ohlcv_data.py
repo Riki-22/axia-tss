@@ -7,7 +7,7 @@ from datetime import datetime
 import pytz
 from unittest.mock import Mock, MagicMock
 
-from application.use_cases.data_collection.collect_ohlcv_data import CollectOhlcvDataUseCase
+from src.application.use_cases.data_collection.collect_ohlcv_data import CollectOhlcvDataUseCase
 
 
 class TestCollectOhlcvDataUseCase:

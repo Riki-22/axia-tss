@@ -15,7 +15,7 @@ from src.infrastructure.config.settings import settings
 from src.infrastructure.di.container import container
 from src.infrastructure.gateways.brokers.mt5.mt5_data_collector import MT5DataCollector
 from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
-from application.use_cases.data_collection.collect_ohlcv_data import CollectOhlcvDataUseCase
+from src.application.use_cases.data_collection.collect_ohlcv_data import CollectOhlcvDataUseCase
 
 logging.basicConfig(
     level=logging.INFO,
