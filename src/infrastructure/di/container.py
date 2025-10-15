@@ -2,8 +2,8 @@
 import logging
 from typing import Optional
 from src.infrastructure.config.settings import settings
-from infrastructure.persistence.dynamodb.dynamodb_kill_switch_repository import DynamoDBKillSwitchRepository
-from infrastructure.persistence.dynamodb.dynamodb_order_repository import DynamoDBOrderRepository
+from src.infrastructure.persistence.dynamodb.dynamodb_kill_switch_repository import DynamoDBKillSwitchRepository
+from src.infrastructure.persistence.dynamodb.dynamodb_order_repository import DynamoDBOrderRepository
 from src.infrastructure.gateways.brokers.mt5.mt5_connection import MT5Connection
 from src.infrastructure.gateways.brokers.mt5.mt5_order_executor import MT5OrderExecutor
 from src.infrastructure.persistence.redis import RedisClient, RedisOhlcvDataRepository
