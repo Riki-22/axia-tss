@@ -15,7 +15,7 @@ from src.domain.repositories.ohlcv_data_repository import IOhlcvDataRepository
 logger = logging.getLogger(__name__)
 
 
-class S3MarketDataRepository(IOhlcvDataRepository):
+class S3OhlcvDataRepository(IOhlcvDataRepository):
     """
     S3永続化リポジトリ
     
@@ -36,7 +36,7 @@ class S3MarketDataRepository(IOhlcvDataRepository):
         """
         self.bucket_name = bucket_name
         self.s3_client = s3_client
-        logger.info(f"S3MarketDataRepository initialized: bucket={bucket_name}")
+        logger.info(f"S3OhlcvDataRepository initialized: bucket={bucket_name}")
     
     # ========================================
     # IOhlcvDataRepository実装
