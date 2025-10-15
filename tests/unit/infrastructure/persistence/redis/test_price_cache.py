@@ -316,8 +316,8 @@ class TestPriceCacheSerialization:
         # インデックスがDatetimeIndex
         assert isinstance(df_restored.index, pd.DatetimeIndex)
         
-        # UTCタイムゾーン
-        assert df_restored.index.tz == pytz.UTC
+        # UTCタイムゾーン（pytz.UTCとdatetime.timezone.utcは異なるオブジェクト）
+        assert str(df_restored.index.tz) == 'UTC'
         
         # 時刻が秒単位で一致
         assert (df.index.floor('s') == df_restored.index.floor('s')).all()
