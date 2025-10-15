@@ -1,5 +1,5 @@
-# tests/unit/application/use_cases/data_collection/test_collect_market_data.py
-"""CollectMarketDataUseCase 単体テスト"""
+# tests/unit/application/use_cases/data_collection/test_collect_ohlcv_data.py
+"""CollectOhlcvDataUseCase 単体テスト"""
 
 import pytest
 import pandas as pd
@@ -7,18 +7,18 @@ from datetime import datetime
 import pytz
 from unittest.mock import Mock, MagicMock
 
-from src.application.use_cases.data_collection.collect_market_data import CollectMarketDataUseCase
+from application.use_cases.data_collection.collect_ohlcv_data import CollectOhlcvDataUseCase
 
 
-class TestCollectMarketDataUseCase:
-    """CollectMarketDataUseCase のテストクラス"""
+class TestCollectOhlcvDataUseCase:
+    """CollectOhlcvDataUseCase のテストクラス"""
     
     def setup_method(self):
         """各テストメソッドの前に実行"""
         # モックオブジェクト作成
         self.mt5_collector = Mock()
         self.s3_repo = Mock()
-        self.price_cache = Mock()
+        self.ohlcv_cache = Mock()
         
         # 設定
         self.symbols = ['USDJPY', 'EURUSD']
@@ -36,10 +36,10 @@ class TestCollectMarketDataUseCase:
         })
         
         # ユースケース作成
-        self.use_case = CollectMarketDataUseCase(
+        self.use_case = CollectOhlcvDataUseCase(
             mt5_data_collector=self.mt5_collector,
             s3_repository=self.s3_repo,
-            price_cache=self.price_cache,
+            ohlcv_cache=self.ohlcv_cache,
             symbols=self.symbols,
             timeframes=self.timeframes,
             fetch_counts=self.fetch_counts
@@ -54,8 +54,8 @@ class TestCollectMarketDataUseCase:
         self.s3_repo.save_ohlcv_data.return_value = True
         
         # Redis保存成功をモック
-        self.price_cache.save_ohlcv.return_value = True
-        self.price_cache.get_cache_stats.return_value = {
+        self.ohlcv_cache.save_ohlcv.return_value = True
+        self.ohlcv_cache.get_cache_stats.return_value = {
             'total_keys': 4,
             'memory_used_mb': 5.0,
             'memory_status': 'OK'
@@ -74,7 +74,7 @@ class TestCollectMarketDataUseCase:
         assert self.s3_repo.save_ohlcv_data.call_count == 4
         
         # Redisが正しく呼ばれたか
-        assert self.price_cache.save_ohlcv.call_count == 4
+        assert self.ohlcv_cache.save_ohlcv.call_count == 4
     
     def test_execute_mt5_failure(self):
         """MT5からのデータ取得失敗"""
@@ -89,7 +89,7 @@ class TestCollectMarketDataUseCase:
         
         # S3とRedisは呼ばれない
         assert self.s3_repo.save_ohlcv_data.call_count == 0
-        assert self.price_cache.save_ohlcv.call_count == 0
+        assert self.ohlcv_cache.save_ohlcv.call_count == 0
     
     def test_execute_s3_failure(self):
         """S3保存失敗"""
@@ -106,7 +106,7 @@ class TestCollectMarketDataUseCase:
         assert result is False
         
         # Redisは呼ばれない（S3失敗時はスキップ）
-        assert self.price_cache.save_ohlcv.call_count == 0
+        assert self.ohlcv_cache.save_ohlcv.call_count == 0
     
     def test_execute_redis_failure(self):
         """Redis保存失敗（S3は成功）"""
@@ -117,8 +117,8 @@ class TestCollectMarketDataUseCase:
         self.s3_repo.save_ohlcv_data.return_value = True
         
         # Redis保存失敗
-        self.price_cache.save_ohlcv.return_value = False
-        self.price_cache.get_cache_stats.return_value = {}
+        self.ohlcv_cache.save_ohlcv.return_value = False
+        self.ohlcv_cache.get_cache_stats.return_value = {}
         
         # 実行
         result = self.use_case.execute()
@@ -130,7 +130,7 @@ class TestCollectMarketDataUseCase:
         assert self.s3_repo.save_ohlcv_data.call_count == 4
         
         # Redisは呼ばれたが失敗
-        assert self.price_cache.save_ohlcv.call_count == 4
+        assert self.ohlcv_cache.save_ohlcv.call_count == 4
     
     def test_execute_partial_success(self):
         """一部成功・一部失敗"""
@@ -146,8 +146,8 @@ class TestCollectMarketDataUseCase:
         self.s3_repo.save_ohlcv_data.return_value = True
         
         # Redis保存成功
-        self.price_cache.save_ohlcv.return_value = True
-        self.price_cache.get_cache_stats.return_value = {}
+        self.ohlcv_cache.save_ohlcv.return_value = True
+        self.ohlcv_cache.get_cache_stats.return_value = {}
         
         # 実行
         result = self.use_case.execute()
@@ -159,7 +159,7 @@ class TestCollectMarketDataUseCase:
         assert self.s3_repo.save_ohlcv_data.call_count == 2
         
         # Redisも2回だけ呼ばれる
-        assert self.price_cache.save_ohlcv.call_count == 2
+        assert self.ohlcv_cache.save_ohlcv.call_count == 2
     
     def test_execute_exception_handling(self):
         """例外発生時の処理継続"""
@@ -175,8 +175,8 @@ class TestCollectMarketDataUseCase:
         self.s3_repo.save_ohlcv_data.return_value = True
         
         # Redis保存成功
-        self.price_cache.save_ohlcv.return_value = True
-        self.price_cache.get_cache_stats.return_value = {}
+        self.ohlcv_cache.save_ohlcv.return_value = True
+        self.ohlcv_cache.get_cache_stats.return_value = {}
         
         # 実行
         result = self.use_case.execute()
@@ -186,15 +186,15 @@ class TestCollectMarketDataUseCase:
         
         # 3つは成功
         assert self.s3_repo.save_ohlcv_data.call_count == 3
-        assert self.price_cache.save_ohlcv.call_count == 3
+        assert self.ohlcv_cache.save_ohlcv.call_count == 3
     
     def test_fetch_counts_default(self):
         """fetch_countsでDEFAULTが使用される"""
         # タイムフレームにM15を追加（fetch_countsには定義なし）
-        use_case = CollectMarketDataUseCase(
+        use_case = CollectOhlcvDataUseCase(
             mt5_data_collector=self.mt5_collector,
             s3_repository=self.s3_repo,
-            price_cache=self.price_cache,
+            ohlcv_cache=self.ohlcv_cache,
             symbols=['USDJPY'],
             timeframes=['M15'],  # 定義なし
             fetch_counts={'H1': 24, 'DEFAULT': 500}
@@ -203,8 +203,8 @@ class TestCollectMarketDataUseCase:
         # MT5からのデータ取得成功
         self.mt5_collector.fetch_ohlcv_data.return_value = self.test_df
         self.s3_repo.save_ohlcv_data.return_value = True
-        self.price_cache.save_ohlcv.return_value = True
-        self.price_cache.get_cache_stats.return_value = {}
+        self.ohlcv_cache.save_ohlcv.return_value = True
+        self.ohlcv_cache.get_cache_stats.return_value = {}
         
         # 実行
         use_case.execute()

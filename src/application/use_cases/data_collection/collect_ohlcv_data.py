@@ -1,17 +1,17 @@
-# src/application/use_cases/data_collection/collect_market_data.py
+# src/application/use_cases/data_collection/collect_ohlcv_data.py
 """マーケットデータ収集ユースケース"""
 
 import logging
 from typing import List, Dict
 
 from src.infrastructure.gateways.brokers.mt5.mt5_data_collector import MT5DataCollector
-from src.infrastructure.persistence.s3.market_data_repository import S3MarketDataRepository
-from src.infrastructure.persistence.redis.price_cache_repository import PriceCacheRepository
+from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
+from infrastructure.persistence.redis.redis_ohlcv_data_repository import RedisOhlcvDataRepository
 
 logger = logging.getLogger(__name__)
 
 
-class CollectMarketDataUseCase:
+class CollectOhlcvDataUseCase:
     """
     マーケットデータ収集ユースケース
     
@@ -31,8 +31,8 @@ class CollectMarketDataUseCase:
     def __init__(
         self,
         mt5_data_collector: MT5DataCollector,
-        s3_repository: S3MarketDataRepository,
-        price_cache: PriceCacheRepository,
+        s3_repository: S3OhlcvDataRepository,
+        ohlcv_cache: RedisOhlcvDataRepository,
         symbols: List[str],
         timeframes: List[str],
         fetch_counts: Dict[str, int]
@@ -41,20 +41,20 @@ class CollectMarketDataUseCase:
         Args:
             mt5_data_collector: MT5データ収集器
             s3_repository: S3リポジトリ
-            price_cache: Redisキャッシュリポジトリ
+            ohlcv_cache: Redisキャッシュリポジトリ
             symbols: 収集対象の通貨ペアリスト
             timeframes: 収集対象のタイムフレームリスト
             fetch_counts: タイムフレーム別取得件数
         """
         self.mt5_data_collector = mt5_data_collector
         self.s3_repository = s3_repository
-        self.price_cache = price_cache
+        self.ohlcv_cache = ohlcv_cache
         self.symbols = symbols
         self.timeframes = timeframes
         self.fetch_counts = fetch_counts
         
         logger.info(
-            f"CollectMarketDataUseCase initialized: "
+            f"CollectOhlcvDataUseCase initialized: "
             f"{len(symbols)} symbols, {len(timeframes)} timeframes"
         )
     
@@ -127,7 +127,7 @@ class CollectMarketDataUseCase:
                     )
                     
                     # 3. Redis保存（キャッシュ）
-                    cache_success = self.price_cache.save_ohlcv(
+                    cache_success = self.ohlcv_cache.save_ohlcv(
                         df, symbol, timeframe
                     )
                     
@@ -164,7 +164,7 @@ class CollectMarketDataUseCase:
         
         # 5. Redis統計情報も出力
         try:
-            cache_stats = self.price_cache.get_cache_stats()
+            cache_stats = self.ohlcv_cache.get_cache_stats()
             logger.info("Redis Cache Statistics:")
             logger.info(f"  Total keys: {cache_stats.get('total_keys', 0)}")
             logger.info(f"  Memory used: {cache_stats.get('memory_used_mb', 0):.2f} MB")
@@ -210,19 +210,19 @@ if __name__ == "__main__":
     )
     
     # S3リポジトリ作成
-    s3_repo = S3MarketDataRepository(
+    s3_repo = S3OhlcvDataRepository(
         bucket_name=settings.s3_raw_data_bucket,
         s3_client=boto3.client('s3', region_name=settings.aws_region)
     )
     
     # PriceCache取得
-    price_cache = container.get_price_cache()
+    ohlcv_cache = container.get_ohlcv_cache()
     
     # ユースケース実行
-    use_case = CollectMarketDataUseCase(
+    use_case = CollectOhlcvDataUseCase(
         mt5_data_collector=mt5_collector,
         s3_repository=s3_repo,
-        price_cache=price_cache,
+        ohlcv_cache=ohlcv_cache,
         symbols=settings.data_collection_symbols,
         timeframes=settings.data_collection_timeframes,
         fetch_counts=settings.data_fetch_counts

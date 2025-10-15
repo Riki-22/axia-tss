@@ -1,26 +1,26 @@
-# tests/unit/infrastructure/gateways/market_data/test_market_data_provider.py
-"""MarketDataProvider 単体テスト"""
+# tests/unit/infrastructure/gateways/market_data/test_ohlcv_data_provider.py
+"""OhlcvDataProvider 単体テスト"""
 
 import pytest
 from unittest.mock import Mock
 
-from src.infrastructure.gateways.market_data.market_data_provider import MarketDataProvider
+from infrastructure.gateways.market_data.ohlcv_data_provider import OhlcvDataProvider
 
 
-class TestMarketDataProvider:
-    """MarketDataProvider のテストクラス"""
+class TestOhlcvDataProvider:
+    """OhlcvDataProvider のテストクラス"""
     
     def setup_method(self):
         """各テストメソッドの前に実行"""
         # モックオブジェクト作成
-        self.price_cache = Mock()
+        self.ohlcv_cache = Mock()
         self.mt5_collector = Mock()
         self.s3_repo = Mock()
         self.yfinance_client = Mock()
         
         # プロバイダー作成（全ソース利用可能）
-        self.provider = MarketDataProvider(
-            price_cache=self.price_cache,
+        self.provider = OhlcvDataProvider(
+            ohlcv_cache=self.ohlcv_cache,
             mt5_data_collector=self.mt5_collector,
             s3_repository=self.s3_repo,
             yfinance_client=self.yfinance_client
@@ -39,8 +39,8 @@ class TestMarketDataProvider:
     
     def test_init_redis_only(self):
         """Redis のみの初期化"""
-        provider = MarketDataProvider(
-            price_cache=self.price_cache
+        provider = OhlcvDataProvider(
+            ohlcv_cache=self.ohlcv_cache
         )
         
         assert provider.cache is not None
@@ -148,7 +148,7 @@ class TestMarketDataProvider:
     
     def test_filter_available_sources_redis_only(self):
         """Redis のみ利用可能"""
-        provider = MarketDataProvider(price_cache=self.price_cache)
+        provider = OhlcvDataProvider(ohlcv_cache=self.ohlcv_cache)
         
         sources = ['redis', 'mt5', 's3', 'yfinance']
         filtered = provider._filter_available_sources(sources)
@@ -157,7 +157,7 @@ class TestMarketDataProvider:
     
     def test_filter_available_sources_none(self):
         """利用可能なソースがない"""
-        provider = MarketDataProvider(price_cache=self.price_cache)
+        provider = OhlcvDataProvider(ohlcv_cache=self.ohlcv_cache)
         
         sources = ['mt5', 's3']  # Redisは含まれない
         filtered = provider._filter_available_sources(sources)

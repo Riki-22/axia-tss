@@ -1,4 +1,4 @@
-# src/infrastructure/persistence/s3/market_data_repository.py
+# src/infrastructure/persistence/s3/s3_ohlcv_data_repository.py
 import io
 import os
 import logging
@@ -10,7 +10,7 @@ import pytz
 logger = logging.getLogger(__name__)
 
 
-class S3MarketDataRepository:
+class S3OhlcvDataRepository:
     """S3へのマーケットデータ保存リポジトリ"""
     
     def __init__(self, bucket_name: str, s3_client):

@@ -34,10 +34,10 @@
 src/infrastructure/persistence/redis/
 ├── __init__.py
 ├── redis_client.py      # 接続管理（シングルトン）
-└── price_cache_repository.py       # OHLCVキャッシュロジック
+└── redis_ohlcv_data_repository.py       # OHLCVキャッシュロジック
 
 src/domain/repositories/
-└── market_data_repository.py  # インターフェース定義
+└── ohlcv_data_repository.py  # インターフェース定義
 ```
 
 ---
@@ -49,13 +49,13 @@ src/domain/repositories/
 ```
 ┌─────────────────────────────────────────────────┐
 │ Domain Layer                                    │
-│  └─ IMarketDataRepository (インターフェース)    │
+│  └─ IOhlcvDataRepository (インターフェース)    │
 └─────────────────────────────────────────────────┘
                     ↑ 実装
 ┌─────────────────────────────────────────────────┐
 │ Infrastructure Layer                            │
 │  ├─ RedisClient (接続管理)                      │
-│  └─ PriceCacheRepository (キャッシュロジック)             │
+│  └─ RedisOhlcvDataRepository (キャッシュロジック)             │
 └─────────────────────────────────────────────────┘
                     ↓ 利用
 ┌─────────────────────────────────────────────────┐
@@ -89,7 +89,7 @@ src/domain/repositories/
 └─ close() → None
 ```
 
-#### PriceCacheRepository（キャッシュロジック）
+#### RedisOhlcvDataRepository（キャッシュロジック）
 
 **役割**: OHLCVデータ専用の高レベル操作
 
@@ -479,10 +479,10 @@ def test_basic_operations():
 ```
 
 ```python
-# test_price_cache_repository.py
+# test_redis_ohlcv_data_repository.py
 def test_save_load_ohlcv():
     """OHLCV保存・読み込みのテスト"""
-    cache = PriceCacheRepository()
+    cache = RedisOhlcvDataRepository()
     df = create_test_dataframe()
     
     assert cache.save_ohlcv(df, "USDJPY", "H1")
@@ -523,7 +523,7 @@ def test_full_integration():
     df = mt5_collector.fetch_ohlcv_data("USDJPY", "H1", 24)
     
     # 2. Redisに保存
-    cache = PriceCacheRepository()
+    cache = RedisOhlcvDataRepository()
     assert cache.save_ohlcv(df, "USDJPY", "H1")
     
     # 3. Redisから読み込み
@@ -539,7 +539,7 @@ def test_full_integration():
 
 def test_performance_benchmark():
     """パフォーマンステスト"""
-    cache = PriceCacheRepository()
+    cache = RedisOhlcvDataRepository()
     
     # 保存速度測定
     start = time.time()
@@ -580,7 +580,7 @@ def test_performance_benchmark():
   - [ ] ヘルスチェック
   - [ ] 単体テスト
 
-- [ ] `price_cache_repository.py` 実装
+- [ ] `redis_ohlcv_data_repository.py` 実装
   - [ ] NYクローズTTL計算
   - [ ] 夏時間判定
   - [ ] MessagePackシリアライズ

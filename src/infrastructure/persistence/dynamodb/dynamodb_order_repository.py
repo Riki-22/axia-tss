@@ -1,4 +1,4 @@
-# src/infrastructure/persistence/dynamodb/order_repository.py
+# src/infrastructure/persistence/dynamodb/dynamodb_order_repository.py
 import logging
 import json
 import uuid

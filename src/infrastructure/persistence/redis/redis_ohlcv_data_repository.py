@@ -1,4 +1,4 @@
-# src/infrastructure/persistence/redis/price_cache_repository.py
+# src/infrastructure/persistence/redis/redis_ohlcv_data_repository.py
 """OHLCVデータ専用キャッシュ（NYクローズ基準TTL）"""
 
 import logging
@@ -10,13 +10,13 @@ import numpy as np
 import msgpack
 import pytz
 
-from src.domain.repositories.market_data_repository import IMarketDataRepository
+from domain.repositories.ohlcv_data_repository import IOhlcvDataRepository
 from .redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
 
 
-class PriceCacheRepository(IMarketDataRepository):
+class RedisOhlcvDataRepository(IOhlcvDataRepository):
     """
     OHLCVデータ専用キャッシュクラス
     
@@ -50,7 +50,7 @@ class PriceCacheRepository(IMarketDataRepository):
             'cache_hits': 0,
             'cache_misses': 0
         }
-        logger.info("PriceCacheRepository initialized")
+        logger.info("RedisOhlcvDataRepository initialized")
     
     # ========================================
     # キー管理
@@ -236,7 +236,7 @@ class PriceCacheRepository(IMarketDataRepository):
             raise ValueError(f"Failed to deserialize DataFrame: {e}")
     
     # ========================================
-    # IMarketDataRepository 実装
+    # IOhlcvDataRepository 実装
     # ========================================
     
     def save_ohlcv(

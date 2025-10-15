@@ -13,7 +13,7 @@
 
 ### 主要成果物
 - Redis統合（24時間データ保持）
-- 統合データプロバイダー（MarketDataProvider）
+- 統合データプロバイダー（OhlcvDataProvider）
 - S3読み取り機能の実装
 - Streamlitチャート表示の最適化
 
@@ -68,14 +68,14 @@ src/
 │   │   └── order.py                          # ✅ Phase 1完了
 │   └── repositories/                         # インターフェース定義
 │       ├── kill_switch_repository.py         # ✅ Phase 1完了
-│       └── market_data_repository.py         # 🆕 Phase 2: 新規作成
+│       └── ohlcv_data_repository.py         # 🆕 Phase 2: 新規作成
 │
 ├── application/                               # アプリケーション層
 │   └── use_cases/
 │       ├── order_processing/
 │       │   └── process_sqs_order.py          # ✅ Phase 1完了
 │       └── data_collection/
-│           └── collect_market_data.py        # ✅ Phase 1完了（日次実行）
+│           └── collect_ohlcv_data.py        # ✅ Phase 1完了（日次実行）
 │
 ├── infrastructure/                            # インフラ層
 │   ├── config/
@@ -83,17 +83,17 @@ src/
 │   │
 │   ├── persistence/
 │   │   ├── dynamodb/
-│   │   │   ├── order_repository.py          # ✅ Phase 1完了
-│   │   │   └── kill_switch_repository.py    # ✅ Phase 1完了
+│   │   │   ├── dynamodb_order_repository.py          # ✅ Phase 1完了
+│   │   │   └── dynamodb_kill_switch_repository.py    # ✅ Phase 1完了
 │   │   │
 │   │   ├── s3/
-│   │   │   └── market_data_repository.py    # 🔄 Phase 2: 読み取り機能追加
+│   │   │   └── ohlcv_data_repository.py    # 🔄 Phase 2: 読み取り機能追加
 │   │   │       ├── save_ohlcv_data()        # ✅ 実装済み
 │   │   │       └── load_ohlcv()             # 🆕 新規実装
 │   │   │
 │   │   └── redis/                           # 🆕 Phase 2: 新規ディレクトリ
 │   │       ├── redis_client.py              # Redis接続管理
-│   │       └── price_cache_repository.py               # 価格キャッシュ（24時間保持）
+│   │       └── redis_ohlcv_data_repository.py               # 価格キャッシュ（24時間保持）
 │   │
 │   └── gateways/
 │       ├── brokers/mt5/
@@ -104,7 +104,7 @@ src/
 │       │   └── mt5_proxy_client.py          # ⏳ Phase 3
 │       │
 │       └── market_data/
-│           ├── market_data_provider.py      # 🆕 Phase 2: 統合プロバイダー
+│           ├── ohlcv_data_provider.py      # 🆕 Phase 2: 統合プロバイダー
 │           ├── yfinance_gateway.py          # ✅ 既存実装済み
 │           └── dummy_generator.py           # ✅ 既存実装済み
 │
@@ -115,7 +115,7 @@ src/
     │
     └── ui/streamlit/
         └── components/trading_charts/
-            └── chart_data_source.py         # 🔄 Phase 2: MarketDataProvider利用
+            └── chart_data_source.py         # 🔄 Phase 2: OhlcvDataProvider利用
 ```
 
 ---
@@ -124,7 +124,7 @@ src/
 
 ### 1. Redis価格キャッシュ
 
-**ファイル**: `src/infrastructure/persistence/redis/price_cache_repository.py`
+**ファイル**: `src/infrastructure/persistence/redis/redis_ohlcv_data_repository.py`
 
 | 設定項目 | 値 | 説明 |
 |---------|-----|------|
@@ -141,7 +141,7 @@ src/
 
 ### 2. S3マーケットデータリポジトリ
 
-**ファイル**: `src/infrastructure/persistence/s3/market_data_repository.py`
+**ファイル**: `src/infrastructure/persistence/s3/s3_ohlcv_data_repository.py`
 
 **新規メソッド**:
 - `load_ohlcv(symbol, timeframe, days, start_date, end_date)` - 期間指定読み込み
@@ -150,7 +150,7 @@ src/
 
 ### 3. 統合データプロバイダー
 
-**ファイル**: `src/infrastructure/gateways/market_data/market_data_provider.py`
+**ファイル**: `src/infrastructure/gateways/market_data/ohlcv_data_provider.py`
 
 **データ取得メソッド**:
 ```python
@@ -179,7 +179,7 @@ get_data(
 | プロセス | 実行頻度 | 処理内容 | 実装ファイル |
 |---------|---------|---------|------------|
 | **日次データ収集** | 毎日深夜2時 | MT5から24時間分取得<br>S3保存 + Redisキャッシュ | `run_data_collector.py` |
-| **Redisクリーンアップ** | 日次収集時 | 24時間超のデータ削除 | `price_cache_repository.py` |
+| **Redisクリーンアップ** | 日次収集時 | 24時間超のデータ削除 | `redis_ohlcv_data_repository.py` |
 
 ### cron設定
 
@@ -229,13 +229,13 @@ Request: 30日分のUSDJPY H1
 
 #### Day 1-2: Redis実装
 - [ ] `redis_client.py` 接続管理実装
-- [ ] `price_cache_repository.py` 24時間保持ロジック実装
+- [ ] `redis_ohlcv_data_repository.py` 24時間保持ロジック実装
 - [ ] TTL設定（25時間）
 - [ ] メモリ監視機能
 - [ ] ローカル環境での動作確認
 
 #### Day 3: Domain層
-- [ ] `market_data_repository.py` インターフェース作成
+- [ ] `ohlcv_data_repository.py` インターフェース作成
 - [ ] 型定義（DataFrame, Optional等）
 - [ ] docstring整備
 
@@ -248,7 +248,7 @@ Request: 30日分のUSDJPY H1
 - [ ] 期間指定フィルタリング
 - [ ] エラーハンドリング
 
-#### Day 6-7: MarketDataProvider
+#### Day 6-7: OhlcvDataProvider
 - [ ] 基本構造実装
 - [ ] ユースケース別データ取得
 - [ ] フォールバック処理
@@ -259,7 +259,7 @@ Request: 30日分のUSDJPY H1
 
 #### Day 8-9: Streamlit統合
 - [ ] `chart_data_source.py` 更新
-- [ ] MarketDataProvider利用
+- [ ] OhlcvDataProvider利用
 - [ ] キャッシュ設定（@st.cache_data）
 - [ ] 30日分データ表示テスト
 - [ ] パフォーマンス測定

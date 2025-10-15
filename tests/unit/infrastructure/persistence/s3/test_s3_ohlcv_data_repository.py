@@ -1,23 +1,23 @@
-# tests/unit/infrastructure/persistence/s3/test_market_data_repository.py
-"""S3MarketDataRepository 単体テスト"""
+# tests/unit/infrastructure/persistence/s3/test_s3_ohlcv_data_repository.py
+"""S3OhlcvDataRepository 単体テスト"""
 
 import pytest
 from datetime import datetime
 import pytz
 from unittest.mock import Mock
 
-from src.infrastructure.persistence.s3.market_data_repository import S3MarketDataRepository
+from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
 
 
-class TestS3MarketDataRepository:
-    """S3MarketDataRepository のテストクラス"""
+class TestS3OhlcvDataRepository:
+    """S3OhlcvDataRepository のテストクラス"""
     
     @classmethod
     def setup_class(cls):
         """テストクラス全体のセットアップ"""
         cls.s3_client = Mock()
         cls.bucket_name = "test-bucket"
-        cls.repo = S3MarketDataRepository(
+        cls.repo = S3OhlcvDataRepository(
             bucket_name=cls.bucket_name,
             s3_client=cls.s3_client
         )
