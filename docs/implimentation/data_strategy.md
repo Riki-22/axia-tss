@@ -34,7 +34,7 @@
 src/infrastructure/persistence/redis/
 ├── __init__.py
 ├── redis_client.py      # 接続管理（シングルトン）
-└── price_cache.py       # OHLCVキャッシュロジック
+└── price_cache_repository.py       # OHLCVキャッシュロジック
 
 src/domain/repositories/
 └── market_data_repository.py  # インターフェース定義
@@ -55,7 +55,7 @@ src/domain/repositories/
 ┌─────────────────────────────────────────────────┐
 │ Infrastructure Layer                            │
 │  ├─ RedisClient (接続管理)                      │
-│  └─ PriceCache (キャッシュロジック)             │
+│  └─ PriceCacheRepository (キャッシュロジック)             │
 └─────────────────────────────────────────────────┘
                     ↓ 利用
 ┌─────────────────────────────────────────────────┐
@@ -89,7 +89,7 @@ src/domain/repositories/
 └─ close() → None
 ```
 
-#### PriceCache（キャッシュロジック）
+#### PriceCacheRepository（キャッシュロジック）
 
 **役割**: OHLCVデータ専用の高レベル操作
 
@@ -479,10 +479,10 @@ def test_basic_operations():
 ```
 
 ```python
-# test_price_cache.py
+# test_price_cache_repository.py
 def test_save_load_ohlcv():
     """OHLCV保存・読み込みのテスト"""
-    cache = PriceCache()
+    cache = PriceCacheRepository()
     df = create_test_dataframe()
     
     assert cache.save_ohlcv(df, "USDJPY", "H1")
@@ -523,7 +523,7 @@ def test_full_integration():
     df = mt5_collector.fetch_ohlcv_data("USDJPY", "H1", 24)
     
     # 2. Redisに保存
-    cache = PriceCache()
+    cache = PriceCacheRepository()
     assert cache.save_ohlcv(df, "USDJPY", "H1")
     
     # 3. Redisから読み込み
@@ -539,7 +539,7 @@ def test_full_integration():
 
 def test_performance_benchmark():
     """パフォーマンステスト"""
-    cache = PriceCache()
+    cache = PriceCacheRepository()
     
     # 保存速度測定
     start = time.time()
@@ -580,7 +580,7 @@ def test_performance_benchmark():
   - [ ] ヘルスチェック
   - [ ] 単体テスト
 
-- [ ] `price_cache.py` 実装
+- [ ] `price_cache_repository.py` 実装
   - [ ] NYクローズTTL計算
   - [ ] 夏時間判定
   - [ ] MessagePackシリアライズ

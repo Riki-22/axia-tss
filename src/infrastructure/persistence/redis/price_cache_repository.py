@@ -1,4 +1,4 @@
-# src/infrastructure/persistence/redis/price_cache.py
+# src/infrastructure/persistence/redis/price_cache_repository.py
 """OHLCVデータ専用キャッシュ（NYクローズ基準TTL）"""
 
 import logging
@@ -16,7 +16,7 @@ from .redis_client import RedisClient
 logger = logging.getLogger(__name__)
 
 
-class PriceCache(IMarketDataRepository):
+class PriceCacheRepository(IMarketDataRepository):
     """
     OHLCVデータ専用キャッシュクラス
     
@@ -50,7 +50,7 @@ class PriceCache(IMarketDataRepository):
             'cache_hits': 0,
             'cache_misses': 0
         }
-        logger.info("PriceCache initialized")
+        logger.info("PriceCacheRepository initialized")
     
     # ========================================
     # キー管理

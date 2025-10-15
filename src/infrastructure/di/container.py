@@ -6,7 +6,7 @@ from src.infrastructure.persistence.dynamodb.kill_switch_repository import Dynam
 from src.infrastructure.persistence.dynamodb.order_repository import DynamoDBOrderRepository
 from src.infrastructure.gateways.brokers.mt5.mt5_connection import MT5Connection
 from src.infrastructure.gateways.brokers.mt5.mt5_order_executor import MT5OrderExecutor
-from src.infrastructure.persistence.redis import RedisClient, PriceCache
+from src.infrastructure.persistence.redis import RedisClient, PriceCacheRepository
 from src.domain.services.order_validation import OrderValidationService
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class DIContainer:
         self._order_repository: Optional[DynamoDBOrderRepository] = None
         self._kill_switch_repository: Optional[DynamoDBKillSwitchRepository] = None
         self._redis_client: Optional[RedisClient] = None
-        self._price_cache: Optional[PriceCache] = None
+        self._price_cache: Optional[PriceCacheRepository] = None
     
     def get_kill_switch_repository(self) -> DynamoDBKillSwitchRepository:
         """Kill Switchリポジトリを取得（シングルトン）"""
@@ -88,21 +88,21 @@ class DIContainer:
             logger.info("RedisClient initialized via DIContainer")
         return self._redis_client
     
-    def get_price_cache(self) -> PriceCache:
+    def get_price_cache(self) -> PriceCacheRepository:
         """
-        PriceCacheを取得（シングルトン）
+        PriceCacheRepositoryを取得（シングルトン）
         
         Returns:
-            PriceCache: OHLCV専用キャッシュ
+            PriceCacheRepository: OHLCV専用キャッシュ
         
         Note:
             内部でRedisClientを利用
         """
         if not self._price_cache:
-            self._price_cache = PriceCache(
+            self._price_cache = PriceCacheRepository(
                 redis_client=self.get_redis_client()
             )
-            logger.info("PriceCache initialized via DIContainer")
+            logger.info("PriceCacheRepository initialized via DIContainer")
         return self._price_cache
 
 # シングルトンインスタンス

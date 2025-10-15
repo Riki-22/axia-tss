@@ -102,7 +102,7 @@ src/
 │       │   └── market_data_repository.py    # ✅ S3保存実装済み
 │       │
 │       └── redis/                            # ⏳ Phase2本実装
-│           ├── price_cache.py               # ⏳ 価格キャッシュ
+│           ├── price_cache_repository.py               # ⏳ 価格キャッシュ
 │           ├── cache_manager.py             # ⏳ キャッシュ戦略
 │           └── proxy_communication.py       # ⏳ Phase2: Proxy通信
 │

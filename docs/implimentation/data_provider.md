@@ -343,7 +343,7 @@ class MarketDataProvider:
         - エラーハンドリング
     
     データソース:
-        - Redis (PriceCache): 24時間キャッシュ
+        - Redis (PriceCacheRepository): 24時間キャッシュ
         - MT5 (MT5DataCollector): リアルタイムデータ
         - S3 (S3MarketDataRepository): 過去データ
         - yfinance: フォールバック用API
@@ -356,7 +356,7 @@ class MarketDataProvider:
     
     def __init__(
         self,
-        price_cache: PriceCache,
+        price_cache: PriceCacheRepository,
         mt5_data_collector: Optional[MT5DataCollector] = None,
         s3_repository: Optional[S3MarketDataRepository] = None,
         yfinance_client: Optional[Any] = None
@@ -474,7 +474,7 @@ def _fetch_from_source(
         None: データ取得失敗
     
     実装:
-        - redis: PriceCache.load_ohlcv()
+        - redis: PriceCacheRepository.load_ohlcv()
         - mt5: MT5DataCollector.fetch_ohlcv_data()
         - s3: S3MarketDataRepository.load_ohlcv()
         - yfinance: _fetch_from_yfinance()
@@ -884,7 +884,7 @@ src/application/use_cases/data_collection/
 
 src/presentation/cli/
 └─ run_data_collector.py (DI更新) ★
-   └─ PriceCache注入追加
+   └─ PriceCacheRepository注入追加
 
 tests/unit/infrastructure/
 ├─ persistence/s3/
@@ -994,7 +994,7 @@ Phase 2全体進捗: 60% → 80% ⬆️ +20%
 
 ```
 原則:
-1. Redis保存は「PriceCache」のみが担当（責務の一元化）
+1. Redis保存は「PriceCacheRepository」のみが担当（責務の一元化）
 2. 保存タイミングは「データ取得成功時」に自動実行
 3. 明示的な保存は「data_collector」のみ
 ```
@@ -1003,13 +1003,13 @@ Phase 2全体進捗: 60% → 80% ⬆️ +20%
 
 ## 📊 現在の実装状況（Week 1完了）
 
-### PriceCache（Week 1実装済み）
+### PriceCacheRepository（Week 1実装済み）
 
 ```python
 ✅ 実装済み:
-src/infrastructure/persistence/redis/price_cache.py
+src/infrastructure/persistence/redis/price_cache_repository.py
 
-class PriceCache(IMarketDataRepository):
+class PriceCacheRepository(IMarketDataRepository):
     """OHLCVデータ専用キャッシュ"""
     
     def save_ohlcv(
@@ -1059,7 +1059,7 @@ class CollectMarketDataUseCase:
         self,
         mt5_data_collector: MT5DataCollector,
         s3_repository: S3MarketDataRepository,
-        price_cache: PriceCache  # ★追加★
+        price_cache: PriceCacheRepository  # ★追加★
     ):
         self.mt5 = mt5_data_collector
         self.s3 = s3_repository
@@ -1157,7 +1157,7 @@ class MarketDataProvider:
             df_recent = df[df.index >= cutoff]
             
             if len(df_recent) > 0:
-                # PriceCacheに保存を委譲
+                # PriceCacheRepositoryに保存を委譲
                 self.cache.save_ohlcv(df_recent, symbol, timeframe)
                 logger.info(
                     f"Cached {len(df_recent)} rows for {symbol} {timeframe}"
@@ -1227,7 +1227,7 @@ class ExecuteStrategyUseCase:
 
 | コンポーネント | Redis保存責務 | 実行タイミング | 対象データ |
 |--------------|-------------|-------------|----------|
-| **PriceCache** | ✅ **保存実行** | - | 全データ |
+| **PriceCacheRepository** | ✅ **保存実行** | - | 全データ |
 | **CollectMarketDataUseCase** | 🔵 保存指示 | 日次 | MT5取得データ |
 | **MarketDataProvider** | 🔵 保存指示 | データ取得時 | S3/MT5/yfinance取得データ |
 | **run_data_collector.py** | - | 日次 | - |
@@ -1236,7 +1236,7 @@ class ExecuteStrategyUseCase:
 
 **凡例**:
 - ✅ **保存実行**: 実際にRedisへ書き込む
-- 🔵 **保存指示**: PriceCacheを呼び出して保存させる
+- 🔵 **保存指示**: PriceCacheRepositoryを呼び出して保存させる
 
 ---
 
@@ -1257,7 +1257,7 @@ class CollectMarketDataUseCase:
         self,
         mt5_data_collector: MT5DataCollector,
         s3_repository: S3MarketDataRepository,
-        price_cache: PriceCache,  # ★追加★
+        price_cache: PriceCacheRepository,  # ★追加★
         symbols: List[str],
         timeframes: List[str],
         fetch_counts: Dict[str, int]
@@ -1317,7 +1317,7 @@ class CollectMarketDataUseCase:
 ファイル: src/presentation/cli/run_data_collector.py
 
 変更内容:
-DIContainerからPriceCacheを取得してUseCaseに注入
+DIContainerからPriceCacheRepositoryを取得してUseCaseに注入
 
 実装:
 def main():
@@ -1338,7 +1338,7 @@ def main():
             s3_client=boto3.client('s3', region_name=settings.aws_region)
         )
         
-        # PriceCache取得 ★追加★
+        # PriceCacheRepository取得 ★追加★
         price_cache = container.get_price_cache()
         
         # ユースケース実行
@@ -1373,7 +1373,7 @@ def main():
 class MarketDataProvider:
     def __init__(
         self,
-        price_cache: PriceCache,  # 必須
+        price_cache: PriceCacheRepository,  # 必須
         mt5_data_collector: Optional[MT5DataCollector] = None,
         s3_repository: Optional[S3MarketDataRepository] = None,
         yfinance_client: Optional[Any] = None
@@ -1395,7 +1395,7 @@ class MarketDataProvider:
         ルール:
         1. 最新24時間分のみ保存
         2. 失敗しても例外を投げない
-        3. PriceCacheに保存を委譲
+        3. PriceCacheRepositoryに保存を委譲
         """
         try:
             # 24時間分にフィルタリング
@@ -1403,7 +1403,7 @@ class MarketDataProvider:
             df_recent = df[df.index >= cutoff]
             
             if len(df_recent) > 0:
-                # PriceCacheに保存を委譲
+                # PriceCacheRepositoryに保存を委譲
                 success = self.cache.save_ohlcv(
                     df_recent, symbol, timeframe
                 )
@@ -1449,7 +1449,7 @@ CollectMarketDataUseCase.execute()
              ├─→ S3保存（長期保存）
              └─→ Redis保存（キャッシュ）★
                  ↓
-            PriceCache.save_ohlcv()
+            PriceCacheRepository.save_ohlcv()
                  ↓
             ElastiCache for Redis
 ```
@@ -1476,7 +1476,7 @@ MarketDataProvider.get_data()
 │ 3. Redis自動保存 ★  │
 └─────────┬───────────┘
           ↓
-     PriceCache.save_ohlcv()
+     PriceCacheRepository.save_ohlcv()
           ↓
      ElastiCache for Redis
           ↓
@@ -1491,7 +1491,7 @@ MarketDataProvider.get_data()
 
 | 責務 | 担当コンポーネント |
 |------|------------------|
-| **Redis保存実行** | PriceCache のみ |
+| **Redis保存実行** | PriceCacheRepository のみ |
 | **日次保存指示** | CollectMarketDataUseCase |
 | **自動保存指示** | MarketDataProvider |
 | **保存しない** | Streamlit, Trading Strategy（間接的に恩恵） |

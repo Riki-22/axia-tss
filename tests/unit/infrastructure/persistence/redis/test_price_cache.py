@@ -1,5 +1,5 @@
-# tests/unit/infrastructure/persistence/redis/test_price_cache.py
-"""PriceCache 単体テスト"""
+# tests/unit/infrastructure/persistence/redis/test_price_cache_repository.py
+"""PriceCacheRepository 単体テスト"""
 
 import pytest
 import pandas as pd
@@ -7,7 +7,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import pytz
 
-from src.infrastructure.persistence.redis import RedisClient, PriceCache
+from src.infrastructure.persistence.redis import RedisClient, PriceCacheRepository
 from src.infrastructure.config.settings import settings
 
 
@@ -33,8 +33,8 @@ def create_test_dataframe(hours: int = 24) -> pd.DataFrame:
     }, index=pd.DatetimeIndex(times, name='time'))
 
 
-class TestPriceCache:
-    """PriceCache のテストクラス"""
+class TestPriceCacheRepository:
+    """PriceCacheRepository のテストクラス"""
     
     @classmethod
     def setup_class(cls):
@@ -46,7 +46,7 @@ class TestPriceCache:
             port=settings.redis_port,
             db=settings.redis_db
         )
-        cls.cache = PriceCache()
+        cls.cache = PriceCacheRepository()
     
     def teardown_method(self):
         """各テストメソッド後のクリーンアップ"""
@@ -208,8 +208,8 @@ class TestPriceCache:
         assert memory['status'] in ['OK', 'WARNING', 'CRITICAL']
 
 
-class TestPriceCacheTTL:
-    """PriceCache TTL機能のテスト"""
+class TestPriceCacheRepositoryTTL:
+    """PriceCacheRepository TTL機能のテスト"""
     
     @classmethod
     def setup_class(cls):
@@ -220,7 +220,7 @@ class TestPriceCacheTTL:
             port=settings.redis_port,
             db=settings.redis_db
         )
-        cls.cache = PriceCache()
+        cls.cache = PriceCacheRepository()
     
     def test_is_dst(self):
         """夏時間判定のテスト"""
@@ -269,8 +269,8 @@ class TestPriceCacheTTL:
         assert ttl <= 24 * 3600 * 3  # 最大3日以内
 
 
-class TestPriceCacheSerialization:
-    """PriceCache シリアライズのテスト"""
+class TestPriceCacheRepositorySerialization:
+    """PriceCacheRepository シリアライズのテスト"""
     
     @classmethod
     def setup_class(cls):
@@ -281,7 +281,7 @@ class TestPriceCacheSerialization:
             port=settings.redis.redis_port,
             db=settings.redis.redis_db
         )
-        cls.cache = PriceCache()
+        cls.cache = PriceCacheRepository()
     
     def test_serialize_deserialize(self):
         """シリアライズ/デシリアライズのテスト"""

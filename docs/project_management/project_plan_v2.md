@@ -93,7 +93,7 @@ src/
 │   │   │
 │   │   └── redis/                           # 🆕 Phase 2: 新規ディレクトリ
 │   │       ├── redis_client.py              # Redis接続管理
-│   │       └── price_cache.py               # 価格キャッシュ（24時間保持）
+│   │       └── price_cache_repository.py               # 価格キャッシュ（24時間保持）
 │   │
 │   └── gateways/
 │       ├── brokers/mt5/
@@ -124,7 +124,7 @@ src/
 
 ### 1. Redis価格キャッシュ
 
-**ファイル**: `src/infrastructure/persistence/redis/price_cache.py`
+**ファイル**: `src/infrastructure/persistence/redis/price_cache_repository.py`
 
 | 設定項目 | 値 | 説明 |
 |---------|-----|------|
@@ -179,7 +179,7 @@ get_data(
 | プロセス | 実行頻度 | 処理内容 | 実装ファイル |
 |---------|---------|---------|------------|
 | **日次データ収集** | 毎日深夜2時 | MT5から24時間分取得<br>S3保存 + Redisキャッシュ | `run_data_collector.py` |
-| **Redisクリーンアップ** | 日次収集時 | 24時間超のデータ削除 | `price_cache.py` |
+| **Redisクリーンアップ** | 日次収集時 | 24時間超のデータ削除 | `price_cache_repository.py` |
 
 ### cron設定
 
@@ -229,7 +229,7 @@ Request: 30日分のUSDJPY H1
 
 #### Day 1-2: Redis実装
 - [ ] `redis_client.py` 接続管理実装
-- [ ] `price_cache.py` 24時間保持ロジック実装
+- [ ] `price_cache_repository.py` 24時間保持ロジック実装
 - [ ] TTL設定（25時間）
 - [ ] メモリ監視機能
 - [ ] ローカル環境での動作確認
