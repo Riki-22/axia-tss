@@ -862,6 +862,14 @@ src/infrastructure/gateways/market_data/
    ├─ _cache_result()
    └─ get_stats()
 
+src/application/use_cases/data_collection/
+└─ collect_market_data.py (Redis保存追加) ★
+   └─ execute() - Redis保存処理追加
+
+src/presentation/cli/
+└─ run_data_collector.py (DI更新) ★
+   └─ PriceCache注入追加
+
 tests/unit/infrastructure/
 ├─ persistence/s3/
 │  └─ test_market_data_repository.py (拡張)
@@ -872,34 +880,612 @@ tests/integration/
 └─ test_market_data_provider.py (新規作成)
 ```
 
+### cron設定（NYクローズ基準）
+
+```bash
+# EC2インスタンスのcrontab設定
+
+# 夏時間（3月第2日曜～11月第1日曜）: 毎日 JST 06:30
+30 6 * 3-11 * /usr/bin/python3 /home/ec2-user/AXIA/src/presentation/cli/run_data_collector.py >> /var/log/axia/data_collector.log 2>&1
+
+# 冬時間（11月第1日曜～3月第2日曜）: 毎日 JST 07:30
+30 7 * 11-2 * /usr/bin/python3 /home/ec2-user/AXIA/src/presentation/cli/run_data_collector.py >> /var/log/axia/data_collector.log 2>&1
+
+# または、動的判定スクリプト（推奨）
+30 6,7 * * * /usr/bin/python3 /home/ec2-user/AXIA/scripts/run_with_dst_check.py >> /var/log/axia/data_collector.log 2>&1
+
+# メモリ監視（毎時実行）
+0 * * * * /usr/bin/python3 /home/ec2-user/AXIA/scripts/check_redis_memory.py >> /var/log/axia/redis_monitor.log 2>&1
+```
+
 ### Phase 2進捗更新
 
 ```
 Week 1: Redis基盤実装 ✅ 100%
-Week 2: データアクセス層 ✅ 100%
+Week 2: データアクセス層 ✅ 100% ← 完了
 Week 3: Streamlit統合 ⏳ 0%
 Week 4: テスト・最適化 ⏳ 0%
 
 Phase 2全体進捗: 60% → 80% ⬆️ +20%
 ```
 
+### 達成した機能
+
+```
+✅ S3からの期間指定データ読み込み
+✅ MarketDataProvider統合インターフェース
+✅ ユースケース別データソース自動選択
+✅ フォールバック戦略（高可用性）
+✅ Redis自動キャッシュ（透過的）
+✅ NYクローズ基準のデータ収集
+✅ 統計情報収集・監視
+```
+
 ---
 
 ## 🚀 次のステップ（Week 3予定）
 
-```
-Week 3: Streamlit統合
-├─ chart_data_source.py更新
-├─ MarketDataProvider利用
-├─ キャッシュ設定最適化
-└─ パフォーマンス測定
+### Week 3: Streamlit統合
 
+```
 目標:
-- チャート表示1秒以内
-- MT5接続競合60%削減
-- ユーザー体験向上
+チャート表示の高速化とユーザー体験向上
+
+実装内容:
+├─ chart_data_source.py更新
+│  ├─ MarketDataProvider利用
+│  └─ MT5直接アクセスを廃止
+│
+├─ キャッシュ設定最適化
+│  ├─ @st.cache_data(ttl=3600)
+│  └─ セッション状態管理
+│
+└─ パフォーマンス測定
+   ├─ チャート表示時間: 目標1秒以内
+   ├─ データ取得時間のログ記録
+   └─ ユーザー体験の改善確認
+
+期待される効果:
+- チャート表示: 2-3秒 → 1秒以内（67%改善）
+- MT5接続競合: 60%削減
+- データソース表示（透明性向上）
 ```
 
+---
+
+## 🎯 基本方針
+
+### 設計思想
+
+```
+原則:
+1. Redis保存は「PriceCache」のみが担当（責務の一元化）
+2. 保存タイミングは「データ取得成功時」に自動実行
+3. 明示的な保存は「data_collector」のみ
+```
+
+---
+
+## 📊 現在の実装状況（Week 1完了）
+
+### PriceCache（Week 1実装済み）
+
+```python
+✅ 実装済み:
+src/infrastructure/persistence/redis/price_cache.py
+
+class PriceCache(IMarketDataRepository):
+    """OHLCVデータ専用キャッシュ"""
+    
+    def save_ohlcv(
+        self, 
+        df: pd.DataFrame, 
+        symbol: str, 
+        timeframe: str
+    ) -> bool:
+        """
+        OHLCVデータをRedisに保存
+        
+        機能:
+        - MessagePackでシリアライズ
+        - NYクローズ基準のTTL設定
+        - 24時間分のみ保持
+        - メモリ使用量監視
+        """
+```
+
+**責務**: Redisへの保存・読み込み専門
+
+---
+
+## 🔄 保存タイミングと責務（Week 2設計）
+
+### パターン1: 日次データ収集（明示的保存）
+
+**担当**: `run_data_collector.py` + `CollectMarketDataUseCase`
+
+```python
+実行タイミング: 毎日深夜（cron）
+処理フロー:
+
+1. MT5から24時間分取得
+   ↓
+2. S3保存（長期保存）
+   ↓
+3. Redis保存（キャッシュ）★追加実装必要★
+   ↓
+4. 完了
+
+コード例:
+# src/application/use_cases/data_collection/collect_market_data.py
+
+class CollectMarketDataUseCase:
+    def __init__(
+        self,
+        mt5_data_collector: MT5DataCollector,
+        s3_repository: S3MarketDataRepository,
+        price_cache: PriceCache  # ★追加★
+    ):
+        self.mt5 = mt5_data_collector
+        self.s3 = s3_repository
+        self.cache = price_cache  # ★追加★
+    
+    def execute(self) -> bool:
+        for symbol in self.symbols:
+            for timeframe in self.timeframes:
+                # 1. MT5から取得
+                df = self.mt5.fetch_ohlcv_data(...)
+                
+                # 2. S3保存
+                self.s3.save_ohlcv_data(df, symbol, timeframe)
+                
+                # 3. Redis保存 ★追加★
+                self.cache.save_ohlcv(df, symbol, timeframe)
+                
+        return True
+```
+
+**理由**:
+- 日次で全通貨ペアのキャッシュをウォームアップ
+- 翌日の高速アクセスを保証
+- MT5からの取得データを即座にキャッシュ
+
+---
+
+### パターン2: オンデマンド取得（自動キャッシュ）
+
+**担当**: `MarketDataProvider`
+
+```python
+実行タイミング: データ取得リクエスト時
+処理フロー:
+
+1. データ取得リクエスト
+   ↓
+2. Redisチェック → ヒット時は返却
+   ↓ ミス
+3. 他ソース（MT5/S3/yfinance）から取得
+   ↓ 取得成功
+4. Redis自動保存 ★自動実行★
+   ↓
+5. データ返却
+
+コード例:
+# src/infrastructure/gateways/market_data/market_data_provider.py
+
+class MarketDataProvider:
+    def get_data(
+        self,
+        symbol: str,
+        timeframe: str,
+        period_days: int = 1,
+        use_case: str = 'trading'
+    ) -> Tuple[Optional[pd.DataFrame], Dict]:
+        
+        # 1. Redisチェック
+        df = self.cache.load_ohlcv(symbol, timeframe, days=period_days)
+        if df is not None:
+            return df, {'source': 'redis', 'cache_hit': True}
+        
+        # 2. 他ソースから取得
+        sources = self._get_source_priority(use_case, period_days)
+        for source in sources:
+            df = self._fetch_from_source(source, ...)
+            
+            if df is not None:
+                # 3. Redis自動保存 ★ここで保存★
+                self._cache_result(df, symbol, timeframe)
+                
+                return df, {
+                    'source': source,
+                    'cache_hit': False
+                }
+        
+        return None, {'error': 'All sources failed'}
+    
+    def _cache_result(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        timeframe: str
+    ):
+        """
+        取得データをRedisに自動キャッシュ
+        
+        ルール:
+        - 最新24時間分のみ保存
+        - 失敗しても例外を投げない（ログ記録のみ）
+        """
+        try:
+            # 24時間分にフィルタリング
+            cutoff = datetime.now(pytz.UTC) - timedelta(hours=24)
+            df_recent = df[df.index >= cutoff]
+            
+            if len(df_recent) > 0:
+                # PriceCacheに保存を委譲
+                self.cache.save_ohlcv(df_recent, symbol, timeframe)
+                logger.info(
+                    f"Cached {len(df_recent)} rows for {symbol} {timeframe}"
+                )
+        except Exception as e:
+            # キャッシュ失敗してもデータ取得は成功扱い
+            logger.warning(f"Failed to cache data: {e}")
+```
+
+**理由**:
+- キャッシュミス時に自動でキャッシュを補充
+- ユーザーは意識せずキャッシュ恩恵を受ける
+- 次回アクセス時の高速化
+
+---
+
+### パターン3: リアルタイム取引時（自動キャッシュ）
+
+**担当**: `MarketDataProvider` 経由
+
+```python
+実行タイミング: 取引戦略がデータ要求時
+処理フロー:
+
+取引戦略
+  ↓
+MarketDataProvider.get_data(use_case='trading')
+  ↓
+MT5から最新データ取得
+  ↓
+Redis自動保存 ★自動実行★
+  ↓
+取引判断
+
+コード例:
+# src/application/use_cases/trading/execute_strategy.py
+
+class ExecuteStrategyUseCase:
+    def __init__(
+        self,
+        market_data_provider: MarketDataProvider  # 統合プロバイダー
+    ):
+        self.data_provider = market_data_provider
+    
+    def execute(self):
+        # MarketDataProvider経由で取得
+        df, meta = self.data_provider.get_data(
+            symbol='USDJPY',
+            timeframe='H1',
+            period_days=1,
+            use_case='trading'  # MT5優先
+        )
+        
+        # MT5から取得 → 自動的にRedisにキャッシュ済み
+        # 次回のStreamlit表示時はRedisヒット
+        
+        # 取引判断...
+```
+
+**理由**:
+- 取引で取得したデータを他コンポーネントも利用可能
+- MT5接続を減らす（キャッシュ活用）
+
+---
+
+## 📋 責務マトリックス
+
+| コンポーネント | Redis保存責務 | 実行タイミング | 対象データ |
+|--------------|-------------|-------------|----------|
+| **PriceCache** | ✅ **保存実行** | - | 全データ |
+| **CollectMarketDataUseCase** | 🔵 保存指示 | 日次 | MT5取得データ |
+| **MarketDataProvider** | 🔵 保存指示 | データ取得時 | S3/MT5/yfinance取得データ |
+| **run_data_collector.py** | - | 日次 | - |
+| **Streamlit** | - | - | - |
+| **Trading Strategy** | - | - | - |
+
+**凡例**:
+- ✅ **保存実行**: 実際にRedisへ書き込む
+- 🔵 **保存指示**: PriceCacheを呼び出して保存させる
+
+---
+
+## 🔧 Week 2での実装追加箇所
+
+### 追加1: CollectMarketDataUseCase（日次保存追加）
+
+```python
+ファイル: src/application/use_cases/data_collection/collect_market_data.py
+
+変更内容:
+1. __init__にprice_cacheを追加
+2. execute内でRedis保存処理を追加
+
+実装:
+class CollectMarketDataUseCase:
+    def __init__(
+        self,
+        mt5_data_collector: MT5DataCollector,
+        s3_repository: S3MarketDataRepository,
+        price_cache: PriceCache,  # ★追加★
+        symbols: List[str],
+        timeframes: List[str],
+        fetch_counts: Dict[str, int]
+    ):
+        self.mt5_data_collector = mt5_data_collector
+        self.s3_repository = s3_repository
+        self.price_cache = price_cache  # ★追加★
+        self.symbols = symbols
+        self.timeframes = timeframes
+        self.fetch_counts = fetch_counts
+    
+    def execute(self) -> bool:
+        success_count = 0
+        
+        for symbol in self.symbols:
+            for timeframe in self.timeframes:
+                try:
+                    # MT5からデータ取得
+                    df = self.mt5_data_collector.fetch_ohlcv_data(
+                        symbol, timeframe, self.fetch_counts[timeframe]
+                    )
+                    
+                    if df is None or df.empty:
+                        continue
+                    
+                    # S3保存（長期保存）
+                    s3_success = self.s3_repository.save_ohlcv_data(
+                        df, symbol, timeframe
+                    )
+                    
+                    # Redis保存（キャッシュ）★追加★
+                    if s3_success:
+                        cache_success = self.price_cache.save_ohlcv(
+                            df, symbol, timeframe
+                        )
+                        if cache_success:
+                            logger.info(
+                                f"Cached {symbol} {timeframe} to Redis"
+                            )
+                    
+                    success_count += 1
+                    
+                except Exception as e:
+                    logger.error(
+                        f"Failed to collect {symbol} {timeframe}: {e}"
+                    )
+                    continue
+        
+        return success_count > 0
+```
+
+---
+
+### 追加2: run_data_collector.py（DI更新）
+
+```python
+ファイル: src/presentation/cli/run_data_collector.py
+
+変更内容:
+DIContainerからPriceCacheを取得してUseCaseに注入
+
+実装:
+def main():
+    try:
+        # MT5接続
+        mt5_connection = container.get_mt5_connection()
+        mt5_connection.connect()
+        
+        # データ収集器作成
+        mt5_data_collector = MT5DataCollector(
+            connection=mt5_connection,
+            timeframe_map=settings.timeframe_map
+        )
+        
+        # S3リポジトリ作成
+        s3_repository = S3MarketDataRepository(
+            bucket_name=settings.s3_raw_data_bucket,
+            s3_client=boto3.client('s3', region_name=settings.aws_region)
+        )
+        
+        # PriceCache取得 ★追加★
+        price_cache = container.get_price_cache()
+        
+        # ユースケース実行
+        use_case = CollectMarketDataUseCase(
+            mt5_data_collector=mt5_data_collector,
+            s3_repository=s3_repository,
+            price_cache=price_cache,  # ★追加★
+            symbols=settings.data_collection_symbols,
+            timeframes=settings.data_collection_timeframes,
+            fetch_counts=settings.data_fetch_counts
+        )
+        
+        success = use_case.execute()
+        return 0 if success else 1
+        
+    except Exception as e:
+        logger.critical(f"実行中にエラー: {e}", exc_info=True)
+        return 1
+```
+
+---
+
+### 追加3: MarketDataProvider（自動キャッシュ）
+
+```python
+ファイル: src/infrastructure/gateways/market_data/market_data_provider.py
+
+変更内容:
+データ取得成功時に自動的にRedis保存
+
+実装:
+class MarketDataProvider:
+    def __init__(
+        self,
+        price_cache: PriceCache,  # 必須
+        mt5_data_collector: Optional[MT5DataCollector] = None,
+        s3_repository: Optional[S3MarketDataRepository] = None,
+        yfinance_client: Optional[Any] = None
+    ):
+        self.cache = price_cache
+        self.mt5 = mt5_data_collector
+        self.s3 = s3_repository
+        self.yfinance = yfinance_client
+    
+    def _cache_result(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        timeframe: str
+    ):
+        """
+        取得データをRedisに自動キャッシュ
+        
+        ルール:
+        1. 最新24時間分のみ保存
+        2. 失敗しても例外を投げない
+        3. PriceCacheに保存を委譲
+        """
+        try:
+            # 24時間分にフィルタリング
+            cutoff = datetime.now(pytz.UTC) - timedelta(hours=24)
+            df_recent = df[df.index >= cutoff]
+            
+            if len(df_recent) > 0:
+                # PriceCacheに保存を委譲
+                success = self.cache.save_ohlcv(
+                    df_recent, symbol, timeframe
+                )
+                
+                if success:
+                    logger.info(
+                        f"Auto-cached {len(df_recent)} rows "
+                        f"for {symbol} {timeframe}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to auto-cache {symbol} {timeframe}"
+                    )
+            else:
+                logger.debug(
+                    f"No recent data to cache for {symbol} {timeframe}"
+                )
+                
+        except Exception as e:
+            # キャッシュ失敗してもデータ取得は成功扱い
+            logger.warning(
+                f"Exception during auto-cache: {e}",
+                exc_info=True
+            )
+```
+
+---
+
+## 🔄 データフロー全体図
+
+### 日次データ収集時
+
+```
+毎日深夜（cron）
+    ↓
+run_data_collector.py
+    ↓
+CollectMarketDataUseCase.execute()
+    ↓
+┌─────────────────────────────────┐
+│ MT5から24時間分取得              │
+└────────────┬────────────────────┘
+             ├─→ S3保存（長期保存）
+             └─→ Redis保存（キャッシュ）★
+                 ↓
+            PriceCache.save_ohlcv()
+                 ↓
+            ElastiCache for Redis
+```
+
+### リアルタイムアクセス時
+
+```
+Streamlit / Trading Strategy
+    ↓
+MarketDataProvider.get_data()
+    ↓
+┌─────────────────────┐
+│ 1. Redisチェック     │ → ヒット時は返却
+└─────────┬───────────┘
+          │ ミス
+          ↓
+┌─────────────────────┐
+│ 2. MT5/S3/yfinance  │ → データ取得
+│    から取得          │
+└─────────┬───────────┘
+          │ 成功
+          ↓
+┌─────────────────────┐
+│ 3. Redis自動保存 ★  │
+└─────────┬───────────┘
+          ↓
+     PriceCache.save_ohlcv()
+          ↓
+     ElastiCache for Redis
+          ↓
+     データ返却
+```
+
+---
+
+## ✅ まとめ
+
+### 責務の明確化
+
+| 責務 | 担当コンポーネント |
+|------|------------------|
+| **Redis保存実行** | PriceCache のみ |
+| **日次保存指示** | CollectMarketDataUseCase |
+| **自動保存指示** | MarketDataProvider |
+| **保存しない** | Streamlit, Trading Strategy（間接的に恩恵） |
+
+### 保存タイミング
+
+| タイミング | 実行元 | 対象データ |
+|----------|--------|----------|
+| **日次深夜** | data_collector | MT5から取得した全データ |
+| **データ取得成功時** | MarketDataProvider | S3/MT5/yfinanceから取得したデータ |
+
+### Week 2実装タスク
+
+```
+Day 2-3: Redis保存統合
+├─ CollectMarketDataUseCase修正（1時間）
+│  ├─ __init__にprice_cache追加
+│  └─ execute内でRedis保存追加
+│
+├─ run_data_collector.py修正（30分）
+│  └─ DI設定更新
+│
+└─ MarketDataProvider実装（Day 3-4で実施）
+   └─ _cache_result()メソッド実装
+```
+
+---
+
+**END OF DOCUMENT**
 ---
 
 **END OF DOCUMENT**
