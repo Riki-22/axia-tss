@@ -111,7 +111,7 @@ class CollectOhlcvDataUseCase:
                     )
                     
                     # 2. S3保存（長期保存）
-                    s3_success = self.s3_repository.save_ohlcv_data(
+                    s3_success = self.s3_repository.save_ohlcv(
                         df, symbol, timeframe
                     )
                     
