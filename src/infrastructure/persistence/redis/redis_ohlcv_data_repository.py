@@ -175,64 +175,142 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
     
     def _serialize_dataframe(self, df: pd.DataFrame) -> bytes:
         """
-        DataFrameをMessagePack形式にシリアライズ
+        DataFrameをシリアライズ（msgpack形式）
+        
+        pandas Timestamp を msgpack でシリアライズできないため、
+        ISO形式の文字列に変換してからシリアライズします。
         
         Args:
-            df: OHLCV DataFrame
-                - index: DatetimeIndex (UTC)
-                - columns: ['open', 'high', 'low', 'close', 'volume']
+            df: シリアライズするDataFrame
         
         Returns:
-            bytes: MessagePack形式のバイナリデータ
-        """
-        df_copy = df.copy()
+            bytes: msgpackバイナリデータ
         
-        # DatetimeIndexをUNIXタイムスタンプ（秒単位）に変換
-        if isinstance(df_copy.index, pd.DatetimeIndex):
-            df_copy.index = df_copy.index.astype(np.int64) // 10**9
+        処理フロー:
+            1. DataFrameをコピー（元データを変更しない）
+            2. timestamp_utc を ISO文字列に変換
+            3. DataFrameをdictに変換
+            4. msgpack でシリアライズ
         
-        # 列指向の辞書に変換
-        data_to_pack = df_copy.reset_index().to_dict('list')
-        
-        return msgpack.packb(data_to_pack, use_bin_type=True)
-    
-    def _deserialize_dataframe(self, data: bytes) -> pd.DataFrame:
-        """
-        MessagePack形式からDataFrameを復元
-        
-        Args:
-            data: MessagePack形式のバイナリデータ
-        
-        Returns:
-            pd.DataFrame: OHLCV DataFrame
+        Note:
+            - インデックスがDatetimeIndexの場合も考慮
+            - タイムゾーン情報も保持される
         
         Raises:
-            ValueError: データが不正な形式の場合
+            TypeError: シリアライズ失敗時
         """
         try:
-            unpacked_data = msgpack.unpackb(data, raw=False)
+            # DataFrameをコピー（元データを変更しない）
+            df_copy = df.copy()
             
-            # DataFrameに復元
-            df = pd.DataFrame(unpacked_data)
+            # timestamp_utc カラムを ISO文字列に変換
+            if 'timestamp_utc' in df_copy.columns:
+                # カラムとして存在する場合
+                if pd.api.types.is_datetime64_any_dtype(df_copy['timestamp_utc']):
+                    df_copy['timestamp_utc'] = df_copy['timestamp_utc'].apply(
+                        lambda x: x.isoformat() if pd.notna(x) else None
+                    )
             
-            # 'time'列または'index'列をインデックスに設定
-            time_col = 'time' if 'time' in df.columns else 'index'
-            df = df.set_index(time_col)
+            # インデックスがDatetimeIndexの場合も対応
+            if isinstance(df_copy.index, pd.DatetimeIndex):
+                # インデックスを文字列に変換してカラムに
+                df_copy = df_copy.reset_index()
+                if 'timestamp_utc' in df_copy.columns:
+                    df_copy['timestamp_utc'] = df_copy['timestamp_utc'].apply(
+                        lambda x: x.isoformat() if pd.notna(x) else None
+                    )
             
-            # UNIXタイムスタンプからdatetimeに復元（UTC）
-            df.index = pd.to_datetime(df.index, unit='s', utc=True)
-            df.index.name = 'time'
+            # DataFrameを辞書に変換
+            data_dict = {
+                'columns': df_copy.columns.tolist(),
+                'data': df_copy.values.tolist(),
+                'dtypes': {col: str(dtype) for col, dtype in df_copy.dtypes.items()}
+            }
             
-            # 数値型を明示的に設定
-            for col in ['open', 'high', 'low', 'close']:
-                if col in df.columns:
-                    df[col] = df[col].astype(np.float64)
-            if 'volume' in df.columns:
-                df['volume'] = df['volume'].astype(np.int64)
+            # msgpackでシリアライズ
+            serialized = msgpack.packb(data_dict, use_bin_type=True)
+            
+            logger.debug(
+                f"Serialized DataFrame: {len(df)} rows, "
+                f"{len(serialized)} bytes"
+            )
+            
+            return serialized
+            
+        except Exception as e:
+            logger.error(f"DataFrame serialization failed: {e}", exc_info=True)
+            raise
+
+    def _deserialize_dataframe(self, data: bytes) -> pd.DataFrame:
+        """
+        バイナリデータをDataFrameにデシリアライズ
+        
+        msgpackでシリアライズされたデータをDataFrameに復元します。
+        ISO文字列として保存された timestamp_utc を datetime に変換します。
+        
+        Args:
+            data: msgpackバイナリデータ
+        
+        Returns:
+            pd.DataFrame: 復元されたDataFrame
+        
+        処理フロー:
+            1. msgpack でデシリアライズ
+            2. DataFrameに変換
+            3. データ型を復元
+            4. timestamp_utc を datetime に変換
+            5. タイムゾーン情報を設定
+        
+        Note:
+            - タイムゾーン情報（UTC）も復元される
+            - カラムの順序も保持される
+        
+        Raises:
+            ValueError: デシリアライズ失敗時
+        """
+        try:
+            # msgpackでデシリアライズ
+            data_dict = msgpack.unpackb(data, raw=False)
+            
+            # DataFrameに変換
+            df = pd.DataFrame(
+                data=data_dict['data'],
+                columns=data_dict['columns']
+            )
+            
+            # データ型を復元
+            if 'dtypes' in data_dict:
+                for col, dtype_str in data_dict['dtypes'].items():
+                    if col in df.columns:
+                        # timestamp_utc は後で変換するのでスキップ
+                        if col == 'timestamp_utc':
+                            continue
+                        
+                        # 基本的な型変換
+                        if dtype_str.startswith('int'):
+                            df[col] = df[col].astype('int64')
+                        elif dtype_str.startswith('float'):
+                            df[col] = df[col].astype('float64')
+                        elif dtype_str == 'object':
+                            df[col] = df[col].astype('object')
+            
+            # timestamp_utc を datetime に変換
+            if 'timestamp_utc' in df.columns:
+                # ISO文字列 → datetime
+                df['timestamp_utc'] = pd.to_datetime(
+                    df['timestamp_utc'],
+                    utc=True  # UTCとして解釈
+                )
+                
+                logger.debug(
+                    f"Deserialized DataFrame: {len(df)} rows, "
+                    f"timestamp_utc converted to datetime"
+                )
             
             return df
             
         except Exception as e:
+            logger.error(f"DataFrame deserialization failed: {e}", exc_info=True)
             raise ValueError(f"Failed to deserialize DataFrame: {e}")
     
     # ========================================

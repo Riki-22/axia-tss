@@ -25,9 +25,9 @@ class TestCollectOhlcvDataUseCase:
         self.timeframes = ['H1', 'D1']
         self.fetch_counts = {'H1': 24, 'D1': 30, 'DEFAULT': 1000}
         
-        # テスト用DataFrame
+        # テスト用DataFrame（修正: freq='h' に変更）
         self.test_df = pd.DataFrame({
-            'timestamp_utc': pd.date_range('2025-10-15', periods=24, freq='H'),
+            'timestamp_utc': pd.date_range('2025-10-15', periods=24, freq='h'),
             'open': [100.0] * 24,
             'high': [101.0] * 24,
             'low': [99.0] * 24,
@@ -50,8 +50,8 @@ class TestCollectOhlcvDataUseCase:
         # MT5からのデータ取得をモック
         self.mt5_collector.fetch_ohlcv_data.return_value = self.test_df
         
-        # S3保存成功をモック
-        self.s3_repo.save_ohlcv_data.return_value = True
+        # S3保存成功をモック（修正: save_ohlcv_data → save_ohlcv）
+        self.s3_repo.save_ohlcv.return_value = True
         
         # Redis保存成功をモック
         self.ohlcv_cache.save_ohlcv.return_value = True
@@ -70,8 +70,8 @@ class TestCollectOhlcvDataUseCase:
         # MT5が正しく呼ばれたか
         assert self.mt5_collector.fetch_ohlcv_data.call_count == 4  # 2 symbols × 2 timeframes
         
-        # S3が正しく呼ばれたか
-        assert self.s3_repo.save_ohlcv_data.call_count == 4
+        # S3が正しく呼ばれたか（修正: save_ohlcv_data → save_ohlcv）
+        assert self.s3_repo.save_ohlcv.call_count == 4
         
         # Redisが正しく呼ばれたか
         assert self.ohlcv_cache.save_ohlcv.call_count == 4
@@ -88,7 +88,7 @@ class TestCollectOhlcvDataUseCase:
         assert result is False
         
         # S3とRedisは呼ばれない
-        assert self.s3_repo.save_ohlcv_data.call_count == 0
+        assert self.s3_repo.save_ohlcv.call_count == 0
         assert self.ohlcv_cache.save_ohlcv.call_count == 0
     
     def test_execute_s3_failure(self):
@@ -96,8 +96,8 @@ class TestCollectOhlcvDataUseCase:
         # MT5からのデータ取得成功
         self.mt5_collector.fetch_ohlcv_data.return_value = self.test_df
         
-        # S3保存失敗をモック
-        self.s3_repo.save_ohlcv_data.return_value = False
+        # S3保存失敗をモック（修正: save_ohlcv_data → save_ohlcv）
+        self.s3_repo.save_ohlcv.return_value = False
         
         # 実行
         result = self.use_case.execute()
@@ -113,8 +113,8 @@ class TestCollectOhlcvDataUseCase:
         # MT5からのデータ取得成功
         self.mt5_collector.fetch_ohlcv_data.return_value = self.test_df
         
-        # S3保存成功
-        self.s3_repo.save_ohlcv_data.return_value = True
+        # S3保存成功（修正: save_ohlcv_data → save_ohlcv）
+        self.s3_repo.save_ohlcv.return_value = True
         
         # Redis保存失敗
         self.ohlcv_cache.save_ohlcv.return_value = False
@@ -126,8 +126,8 @@ class TestCollectOhlcvDataUseCase:
         # 検証: Redis失敗でも成功扱い（警告ログのみ）
         assert result is True
         
-        # S3は全て成功
-        assert self.s3_repo.save_ohlcv_data.call_count == 4
+        # S3は全て成功（修正: save_ohlcv_data → save_ohlcv）
+        assert self.s3_repo.save_ohlcv.call_count == 4
         
         # Redisは呼ばれたが失敗
         assert self.ohlcv_cache.save_ohlcv.call_count == 4
@@ -142,8 +142,8 @@ class TestCollectOhlcvDataUseCase:
             None           # EURUSD D1 失敗
         ]
         
-        # S3保存成功
-        self.s3_repo.save_ohlcv_data.return_value = True
+        # S3保存成功（修正: save_ohlcv_data → save_ohlcv）
+        self.s3_repo.save_ohlcv.return_value = True
         
         # Redis保存成功
         self.ohlcv_cache.save_ohlcv.return_value = True
@@ -155,8 +155,8 @@ class TestCollectOhlcvDataUseCase:
         # 検証: 一部成功したのでTrue
         assert result is True
         
-        # S3は2回だけ呼ばれる（MT5成功分のみ）
-        assert self.s3_repo.save_ohlcv_data.call_count == 2
+        # S3は2回だけ呼ばれる（MT5成功分のみ）（修正: save_ohlcv_data → save_ohlcv）
+        assert self.s3_repo.save_ohlcv.call_count == 2
         
         # Redisも2回だけ呼ばれる
         assert self.ohlcv_cache.save_ohlcv.call_count == 2
@@ -171,8 +171,8 @@ class TestCollectOhlcvDataUseCase:
             self.test_df              # EURUSD D1 成功
         ]
         
-        # S3保存成功
-        self.s3_repo.save_ohlcv_data.return_value = True
+        # S3保存成功（修正: save_ohlcv_data → save_ohlcv）
+        self.s3_repo.save_ohlcv.return_value = True
         
         # Redis保存成功
         self.ohlcv_cache.save_ohlcv.return_value = True
@@ -184,8 +184,8 @@ class TestCollectOhlcvDataUseCase:
         # 検証: 例外があっても他の処理は継続
         assert result is True
         
-        # 3つは成功
-        assert self.s3_repo.save_ohlcv_data.call_count == 3
+        # 3つは成功（修正: save_ohlcv_data → save_ohlcv）
+        assert self.s3_repo.save_ohlcv.call_count == 3
         assert self.ohlcv_cache.save_ohlcv.call_count == 3
     
     def test_fetch_counts_default(self):
@@ -202,7 +202,7 @@ class TestCollectOhlcvDataUseCase:
         
         # MT5からのデータ取得成功
         self.mt5_collector.fetch_ohlcv_data.return_value = self.test_df
-        self.s3_repo.save_ohlcv_data.return_value = True
+        self.s3_repo.save_ohlcv.return_value = True
         self.ohlcv_cache.save_ohlcv.return_value = True
         self.ohlcv_cache.get_cache_stats.return_value = {}
         
