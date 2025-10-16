@@ -37,5 +37,9 @@ class Settings:
                 
         logger.info("設定の初期化が完了しました")
     
+    def get_mt5_credentials(self):
+        """MT5認証情報を取得（後方互換性）"""
+        return self.mt5.get_mt5_credentials()
+
 # シングルトンインスタンス
 settings = Settings()
