@@ -188,14 +188,15 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
         
         処理フロー:
             1. DataFrameをコピー（元データを変更しない）
-            2. インデックスをリセット（DatetimeIndexをカラムに）
-            3. 全datetime列をISO文字列に変換
-            4. to_dict('records') で辞書に変換
-            5. msgpack でシリアライズ
+            2. インデックス情報を保存
+            3. インデックスをカラムに変換
+            4. 全datetime列をISO文字列に変換
+            5. to_dict('records') で辞書に変換
+            6. msgpack でシリアライズ
         
         Note:
             - タイムゾーン情報も保持される
-            - シンプルで堅牢
+            - インデックス名も保存される
         
         Raises:
             TypeError: シリアライズ失敗時
@@ -204,7 +205,11 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
             # DataFrameをコピー
             df_copy = df.copy()
             
-            # インデックスがDatetimeIndexの場合、カラムに変換
+            # インデックス情報を保存
+            index_name = df_copy.index.name
+            is_datetime_index = isinstance(df_copy.index, pd.DatetimeIndex)
+            
+            # インデックスをカラムに変換
             if isinstance(df_copy.index, pd.DatetimeIndex):
                 df_copy = df_copy.reset_index()
             
@@ -218,8 +223,10 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
             # DataFrameを辞書に変換（records形式）
             data_dict = {
                 'columns': df_copy.columns.tolist(),
-                'data': df_copy.to_dict('records'),  # ← シンプル！
-                'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()}  # 元のdtype
+                'data': df_copy.to_dict('records'),
+                'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()},
+                'index_name': index_name,  # インデックス名を保存
+                'is_datetime_index': is_datetime_index  # インデックス型を保存
             }
             
             # msgpackでシリアライズ
@@ -254,10 +261,12 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
             2. DataFrameに変換
             3. datetime型カラムを復元
             4. データ型を復元
+            5. インデックスを復元
         
         Note:
             - タイムゾーン情報（UTC）も復元される
             - カラムの順序も保持される
+            - インデックス情報も復元される
         
         Raises:
             ValueError: デシリアライズ失敗時
@@ -287,6 +296,17 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
                         df[col] = df[col].astype('int64')
                     elif dtype_str.startswith('float'):
                         df[col] = df[col].astype('float64')
+            
+            # インデックスを復元
+            is_datetime_index = data_dict.get('is_datetime_index', False)
+            index_name = data_dict.get('index_name')
+            
+            if is_datetime_index and index_name in df.columns:
+                # DatetimeIndexとして復元
+                df = df.set_index(index_name)
+                # インデックスをdatetime型に変換（念のため）
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index, utc=True)
             
             logger.debug(
                 f"Deserialized DataFrame: {len(df)} rows"
@@ -330,13 +350,21 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
             # TTL計算
             ttl = self._calculate_ttl_until_ny_close()
             
+            # インデックスから開始・終了日時を取得
+            if isinstance(df.index, pd.DatetimeIndex) and len(df) > 0:
+                data_start = df.index[0].isoformat()
+                data_end = df.index[-1].isoformat()
+            else:
+                data_start = None
+                data_end = None
+            
             # メタデータ作成
             metadata = {
                 'symbol': symbol,
                 'timeframe': timeframe,
                 'cached_at': datetime.now(pytz.UTC).isoformat(),
-                'data_start': df.index[0].isoformat() if len(df) > 0 else None,
-                'data_end': df.index[-1].isoformat() if len(df) > 0 else None,
+                'data_start': data_start,
+                'data_end': data_end,
                 'row_count': len(df),
                 'ttl_expires_at': (datetime.now(pytz.UTC) + timedelta(seconds=ttl)).isoformat()
             }
@@ -397,6 +425,20 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
             
             # デシリアライズ
             df = self._deserialize_dataframe(data)
+            
+            # インデックスがDatetimeIndexであることを確認
+            if not isinstance(df.index, pd.DatetimeIndex):
+                logger.warning(
+                    f"Index is not DatetimeIndex for {symbol} {timeframe}, "
+                    f"attempting to convert..."
+                )
+                # timestamp_utc カラムをインデックスに設定
+                if 'timestamp_utc' in df.columns:
+                    df = df.set_index('timestamp_utc')
+                    df.index = pd.to_datetime(df.index, utc=True)
+                else:
+                    logger.error(f"Cannot find timestamp_utc column in {symbol} {timeframe}")
+                    return None
             
             # 期間フィルタリング
             if start_date is not None:
