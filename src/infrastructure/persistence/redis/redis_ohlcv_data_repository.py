@@ -188,43 +188,38 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
         
         処理フロー:
             1. DataFrameをコピー（元データを変更しない）
-            2. timestamp_utc を ISO文字列に変換
-            3. DataFrameをdictに変換
-            4. msgpack でシリアライズ
+            2. インデックスをリセット（DatetimeIndexをカラムに）
+            3. 全datetime列をISO文字列に変換
+            4. to_dict('records') で辞書に変換
+            5. msgpack でシリアライズ
         
         Note:
-            - インデックスがDatetimeIndexの場合も考慮
             - タイムゾーン情報も保持される
+            - シンプルで堅牢
         
         Raises:
             TypeError: シリアライズ失敗時
         """
         try:
-            # DataFrameをコピー（元データを変更しない）
+            # DataFrameをコピー
             df_copy = df.copy()
             
-            # timestamp_utc カラムを ISO文字列に変換
-            if 'timestamp_utc' in df_copy.columns:
-                # カラムとして存在する場合
-                if pd.api.types.is_datetime64_any_dtype(df_copy['timestamp_utc']):
-                    df_copy['timestamp_utc'] = df_copy['timestamp_utc'].apply(
-                        lambda x: x.isoformat() if pd.notna(x) else None
-                    )
-            
-            # インデックスがDatetimeIndexの場合も対応
+            # インデックスがDatetimeIndexの場合、カラムに変換
             if isinstance(df_copy.index, pd.DatetimeIndex):
-                # インデックスを文字列に変換してカラムに
                 df_copy = df_copy.reset_index()
-                if 'timestamp_utc' in df_copy.columns:
-                    df_copy['timestamp_utc'] = df_copy['timestamp_utc'].apply(
+            
+            # 全datetime型カラムを文字列に変換
+            for col in df_copy.columns:
+                if pd.api.types.is_datetime64_any_dtype(df_copy[col]):
+                    df_copy[col] = df_copy[col].apply(
                         lambda x: x.isoformat() if pd.notna(x) else None
                     )
             
-            # DataFrameを辞書に変換
+            # DataFrameを辞書に変換（records形式）
             data_dict = {
                 'columns': df_copy.columns.tolist(),
-                'data': df_copy.values.tolist(),
-                'dtypes': {col: str(dtype) for col, dtype in df_copy.dtypes.items()}
+                'data': df_copy.to_dict('records'),  # ← シンプル！
+                'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()}  # 元のdtype
             }
             
             # msgpackでシリアライズ
@@ -257,9 +252,8 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
         処理フロー:
             1. msgpack でデシリアライズ
             2. DataFrameに変換
-            3. データ型を復元
-            4. timestamp_utc を datetime に変換
-            5. タイムゾーン情報を設定
+            3. datetime型カラムを復元
+            4. データ型を復元
         
         Note:
             - タイムゾーン情報（UTC）も復元される
@@ -273,39 +267,30 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
             data_dict = msgpack.unpackb(data, raw=False)
             
             # DataFrameに変換
-            df = pd.DataFrame(
-                data=data_dict['data'],
-                columns=data_dict['columns']
-            )
+            df = pd.DataFrame(data_dict['data'])
             
-            # データ型を復元
+            # カラム順序を保持
+            if 'columns' in data_dict:
+                df = df[data_dict['columns']]
+            
+            # datetime型カラムを復元
             if 'dtypes' in data_dict:
                 for col, dtype_str in data_dict['dtypes'].items():
-                    if col in df.columns:
-                        # timestamp_utc は後で変換するのでスキップ
-                        if col == 'timestamp_utc':
-                            continue
-                        
-                        # 基本的な型変換
-                        if dtype_str.startswith('int'):
-                            df[col] = df[col].astype('int64')
-                        elif dtype_str.startswith('float'):
-                            df[col] = df[col].astype('float64')
-                        elif dtype_str == 'object':
-                            df[col] = df[col].astype('object')
+                    if col not in df.columns:
+                        continue
+                    
+                    # datetime型の復元
+                    if 'datetime' in dtype_str:
+                        df[col] = pd.to_datetime(df[col], utc=True)
+                    # 数値型の復元
+                    elif dtype_str.startswith('int'):
+                        df[col] = df[col].astype('int64')
+                    elif dtype_str.startswith('float'):
+                        df[col] = df[col].astype('float64')
             
-            # timestamp_utc を datetime に変換
-            if 'timestamp_utc' in df.columns:
-                # ISO文字列 → datetime
-                df['timestamp_utc'] = pd.to_datetime(
-                    df['timestamp_utc'],
-                    utc=True  # UTCとして解釈
-                )
-                
-                logger.debug(
-                    f"Deserialized DataFrame: {len(df)} rows, "
-                    f"timestamp_utc converted to datetime"
-                )
+            logger.debug(
+                f"Deserialized DataFrame: {len(df)} rows"
+            )
             
             return df
             
