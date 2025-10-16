@@ -2,11 +2,11 @@
 import logging
 from typing import Optional
 from src.infrastructure.config.settings import settings
-from src.infrastructure.persistence.dynamodb.kill_switch_repository import DynamoDBKillSwitchRepository
-from src.infrastructure.persistence.dynamodb.order_repository import DynamoDBOrderRepository
+from src.infrastructure.persistence.dynamodb.dynamodb_kill_switch_repository import DynamoDBKillSwitchRepository
+from src.infrastructure.persistence.dynamodb.dynamodb_order_repository import DynamoDBOrderRepository
 from src.infrastructure.gateways.brokers.mt5.mt5_connection import MT5Connection
 from src.infrastructure.gateways.brokers.mt5.mt5_order_executor import MT5OrderExecutor
-from src.infrastructure.persistence.redis import RedisClient, PriceCacheRepository
+from src.infrastructure.persistence.redis import RedisClient, RedisOhlcvDataRepository
 from src.domain.services.order_validation import OrderValidationService
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class DIContainer:
         self._order_repository: Optional[DynamoDBOrderRepository] = None
         self._kill_switch_repository: Optional[DynamoDBKillSwitchRepository] = None
         self._redis_client: Optional[RedisClient] = None
-        self._price_cache: Optional[PriceCacheRepository] = None
+        self._ohlcv_cache: Optional[RedisOhlcvDataRepository] = None
     
     def get_kill_switch_repository(self) -> DynamoDBKillSwitchRepository:
         """Kill Switchリポジトリを取得（シングルトン）"""
@@ -88,22 +88,22 @@ class DIContainer:
             logger.info("RedisClient initialized via DIContainer")
         return self._redis_client
     
-    def get_price_cache(self) -> PriceCacheRepository:
+    def get_ohlcv_cache(self) -> RedisOhlcvDataRepository:
         """
-        PriceCacheRepositoryを取得（シングルトン）
+        RedisOhlcvDataRepositoryを取得（シングルトン）
         
         Returns:
-            PriceCacheRepository: OHLCV専用キャッシュ
+            RedisOhlcvDataRepository: OHLCV専用キャッシュ
         
         Note:
             内部でRedisClientを利用
         """
-        if not self._price_cache:
-            self._price_cache = PriceCacheRepository(
+        if not self._ohlcv_cache:
+            self._ohlcv_cache = RedisOhlcvDataRepository(
                 redis_client=self.get_redis_client()
             )
-            logger.info("PriceCacheRepository initialized via DIContainer")
-        return self._price_cache
+            logger.info("RedisOhlcvDataRepository initialized via DIContainer")
+        return self._ohlcv_cache
 
 # シングルトンインスタンス
 container = DIContainer()

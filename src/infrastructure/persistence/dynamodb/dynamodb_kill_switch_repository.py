@@ -1,4 +1,4 @@
-# src/infrastructure/persistence/dynamodb/kill_switch_repository.py
+# src/infrastructure/persistence/dynamodb/dynamodb_kill_switch_repository.py
 import logging
 from typing import Optional, Dict
 from datetime import datetime

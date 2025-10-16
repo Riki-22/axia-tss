@@ -1,4 +1,4 @@
-# src/domain/repositories/market_data_repository.py
+# src/domain/repositories/ohlcv_data_repository.py
 """マーケットデータリポジトリのインターフェース定義"""
 
 from abc import ABC, abstractmethod
@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 import pandas as pd
 
 
-class IMarketDataRepository(ABC):
+class IOhlcvDataRepository(ABC):
     """
     マーケットデータリポジトリの抽象基底クラス
     

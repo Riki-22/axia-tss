@@ -56,7 +56,7 @@ src/
 │       │   └── process_sqs_order.py         # ✅ message_processor.py移動済み
 │       │
 │       └── data_collection/
-│           └── collect_market_data.py       # ✅ data_collectorロジック実装済み
+│           └── collect_ohlcv_data.py       # ✅ data_collectorロジック実装済み
 │
 ├── infrastructure/                           # 技術的実装層
 │   ├── config/
@@ -82,7 +82,7 @@ src/
 │   │   │       └── mt5_connection_manager.py # ⏳ Phase2: 接続管理（排他制御）
 │   │   │
 │   │   ├── market_data/
-│   │   │   ├── market_data_provider.py      # 🆕 統合データプロバイダー（計画）
+│   │   │   ├── ohlcv_data_provider.py      # 🆕 統合データプロバイダー（計画）
 │   │   │   ├── dummy_generator.py           # ✅ 既に実装済み
 │   │   │   └── yfinance_gateway.py          # ✅ 既に実装済み
 │   │   │
@@ -94,15 +94,15 @@ src/
 │   └── persistence/
 │       ├── dynamodb/
 │       │   ├── base_dynamodb_repository.py  # 🆕 共通処理（計画）
-│       │   ├── kill_switch_repository.py    # ✅ 実装済み（拡張版）
-│       │   ├── order_repository.py          # ✅ dynamodb_handler.py分割済み
+│       │   ├── dynamodb_kill_switch_repository.py    # ✅ 実装済み（拡張版）
+│       │   ├── dynamodb_order_repository.py          # ✅ dynamodb_handler.py分割済み
 │       │   └── position_repository.py       # ⏳ Phase2で実装
 │       │
 │       ├── s3/
-│       │   └── market_data_repository.py    # ✅ S3保存実装済み
+│       │   └── ohlcv_data_repository.py    # ✅ S3保存実装済み
 │       │
 │       └── redis/                            # ⏳ Phase2本実装
-│           ├── price_cache_repository.py               # ⏳ 価格キャッシュ
+│           ├── redis_ohlcv_data_repository.py               # ⏳ 価格キャッシュ
 │           ├── cache_manager.py             # ⏳ キャッシュ戦略
 │           └── proxy_communication.py       # ⏳ Phase2: Proxy通信
 │
@@ -171,8 +171,8 @@ src/
 |-----------|-----------|------|
 | `config_loader_dc.py` | `settings.py` | ✅ |
 | `main.py` | `mt5_data_collector.py`<br>`run_data_collector.py` | ✅ |
-| - | `market_data_repository.py` | ✅ |
-| - | `collect_market_data.py` | ✅ |
+| - | `ohlcv_data_repository.py` | ✅ |
+| - | `collect_ohlcv_data.py` | ✅ |
 
 ### Streamlit Services層移行（Phase2準備完了）
 
@@ -212,7 +212,7 @@ src/
    - TTL設定（25時間）
    - メモリ使用量: 35MB以内
 
-2. **MarketDataProvider実装**（3日）
+2. **OhlcvDataProvider実装**（3日）
    - 統合データアクセス
    - ユースケース別優先順位
 
@@ -232,8 +232,8 @@ src/
 
 ### Phase1実装
 ```python
-# infrastructure/gateways/market_data/market_data_provider.py
-class MarketDataProvider:
+# infrastructure/gateways/market_data/ohlcv_data_provider.py
+class OhlcvDataProvider:
     """データソース統合（キャッシュなし）"""
     def get_latest_price(self, symbol: str):
         if self.mt5.is_connected():
@@ -299,7 +299,7 @@ def get_latest_price(self, symbol: str) -> float:
    - TTL設定（25時間）
    - メモリ使用量: 35MB以内
 
-2. **MarketDataProvider実装**（3日）
+2. **OhlcvDataProvider実装**（3日）
    - 統合データアクセス
    - ユースケース別優先順位
 

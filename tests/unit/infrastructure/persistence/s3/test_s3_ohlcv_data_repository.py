@@ -1,25 +1,25 @@
-# tests/unit/infrastructure/persistence/s3/test_market_data_repository.py
-"""S3MarketDataRepository 単体テスト"""
+# tests/unit/infrastructure/persistence/s3/test_s3_ohlcv_data_repository.py
+"""S3OhlcvDataRepository 単体テスト"""
 
 import pytest
 from datetime import datetime
 import pytz
 from unittest.mock import Mock
+from botocore.exceptions import ClientError
 
-from src.infrastructure.persistence.s3.market_data_repository import S3MarketDataRepository
+from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
 
 
-class TestS3MarketDataRepository:
-    """S3MarketDataRepository のテストクラス"""
+class TestS3OhlcvDataRepository:
+    """S3OhlcvDataRepository のテストクラス"""
     
-    @classmethod
-    def setup_class(cls):
-        """テストクラス全体のセットアップ"""
-        cls.s3_client = Mock()
-        cls.bucket_name = "test-bucket"
-        cls.repo = S3MarketDataRepository(
-            bucket_name=cls.bucket_name,
-            s3_client=cls.s3_client
+    def setup_method(self):
+        """各テストメソッドの前に実行（モックをリセット）"""
+        self.s3_client = Mock()
+        self.bucket_name = "test-bucket"
+        self.repo = S3OhlcvDataRepository(
+            bucket_name=self.bucket_name,
+            s3_client=self.s3_client
         )
     
     # ========================================
@@ -184,7 +184,7 @@ class TestS3MarketDataRepository:
         
         # モックデータ準備
         test_df = pd.DataFrame({
-            'timestamp_utc': pd.date_range('2025-10-15', periods=24, freq='H'),
+            'timestamp_utc': pd.date_range('2025-10-15', periods=24, freq='h'),
             'open': [100.0] * 24,
             'high': [101.0] * 24,
             'low': [99.0] * 24,
@@ -196,7 +196,6 @@ class TestS3MarketDataRepository:
         buffer = io.BytesIO()
         test_df.to_parquet(buffer, index=False)
         buffer.seek(0)
-        parquet_data = buffer.getvalue()
         
         # S3モック設定
         self.s3_client.list_objects_v2.return_value = {
@@ -205,7 +204,7 @@ class TestS3MarketDataRepository:
             ]
         }
         self.s3_client.get_object.return_value = {
-            'Body': io.BytesIO(parquet_data)
+            'Body': io.BytesIO(buffer.getvalue())
         }
         
         # テスト実行
@@ -250,7 +249,7 @@ class TestS3MarketDataRepository:
         
         # 2つのDataFrame
         df1 = pd.DataFrame({
-            'timestamp_utc': pd.date_range('2025-10-15 00:00', periods=12, freq='H'),
+            'timestamp_utc': pd.date_range('2025-10-15 00:00', periods=12, freq='h'),
             'open': [100.0] * 12,
             'high': [101.0] * 12,
             'low': [99.0] * 12,
@@ -259,7 +258,7 @@ class TestS3MarketDataRepository:
         })
         
         df2 = pd.DataFrame({
-            'timestamp_utc': pd.date_range('2025-10-15 12:00', periods=12, freq='H'),
+            'timestamp_utc': pd.date_range('2025-10-15 12:00', periods=12, freq='h'),
             'open': [101.0] * 12,
             'high': [102.0] * 12,
             'low': [100.0] * 12,
@@ -271,10 +270,12 @@ class TestS3MarketDataRepository:
         buffer1 = io.BytesIO()
         df1.to_parquet(buffer1, index=False)
         buffer1.seek(0)
+        parquet_data1 = buffer1.getvalue()
         
         buffer2 = io.BytesIO()
         df2.to_parquet(buffer2, index=False)
         buffer2.seek(0)
+        parquet_data2 = buffer2.getvalue()
         
         # S3モック設定
         self.s3_client.list_objects_v2.return_value = {
@@ -284,10 +285,10 @@ class TestS3MarketDataRepository:
             ]
         }
         
-        # get_objectを複数回呼ぶモック
+        # get_objectを複数回呼ぶモック（修正: BytesIOを毎回新しく作成）
         self.s3_client.get_object.side_effect = [
-            {'Body': buffer1},
-            {'Body': buffer2}
+            {'Body': io.BytesIO(parquet_data1)},
+            {'Body': io.BytesIO(parquet_data2)}
         ]
         
         result = self.repo._load_partition(
@@ -299,17 +300,11 @@ class TestS3MarketDataRepository:
     
     def test_load_partition_nosuchkey_exception(self):
         """NoSuchKey例外の場合（Noneを返す）"""
-        from botocore.exceptions import ClientError
-        
         # NoSuchKeyエラーを返すモック
         error_response = {'Error': {'Code': 'NoSuchKey'}}
         self.s3_client.list_objects_v2.side_effect = ClientError(
             error_response, 'list_objects_v2'
         )
-        
-        # リセット
-        self.s3_client.exceptions = Mock()
-        self.s3_client.exceptions.NoSuchKey = ClientError
         
         result = self.repo._load_partition(
             'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/'
@@ -329,7 +324,7 @@ class TestS3MarketDataRepository:
         
         # モックデータ準備
         test_df = pd.DataFrame({
-            'timestamp_utc': pd.date_range('2025-10-15', periods=24, freq='H'),
+            'timestamp_utc': pd.date_range('2025-10-15', periods=24, freq='h'),
             'open': [100.0] * 24,
             'high': [101.0] * 24,
             'low': [99.0] * 24,
@@ -340,6 +335,7 @@ class TestS3MarketDataRepository:
         buffer = io.BytesIO()
         test_df.to_parquet(buffer, index=False)
         buffer.seek(0)
+        parquet_data = buffer.getvalue()
         
         # S3モック設定
         self.s3_client.list_objects_v2.return_value = {
@@ -347,8 +343,9 @@ class TestS3MarketDataRepository:
                 {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/data.parquet'}
             ]
         }
+        # 修正: BytesIOを新しく作成
         self.s3_client.get_object.return_value = {
-            'Body': buffer
+            'Body': io.BytesIO(parquet_data)
         }
         
         # テスト実行（days=1）
@@ -365,7 +362,7 @@ class TestS3MarketDataRepository:
         
         # 3日分のモックデータ
         test_df = pd.DataFrame({
-            'timestamp_utc': pd.date_range('2025-10-13', periods=72, freq='H'),
+            'timestamp_utc': pd.date_range('2025-10-13', periods=72, freq='h'),
             'open': [100.0] * 72,
             'high': [101.0] * 72,
             'low': [99.0] * 72,
@@ -376,15 +373,19 @@ class TestS3MarketDataRepository:
         buffer = io.BytesIO()
         test_df.to_parquet(buffer, index=False)
         buffer.seek(0)
+        parquet_data = buffer.getvalue()
         
-        # S3モック設定
+        # S3モック設定（3日分のパーティション）
         self.s3_client.list_objects_v2.return_value = {
             'Contents': [
-                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=13/data.parquet'}
+                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=13/data.parquet'},
+                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=14/data.parquet'},
+                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/data.parquet'}
             ]
         }
+        # 修正: 各パーティションで新しいBytesIOを返す
         self.s3_client.get_object.return_value = {
-            'Body': buffer
+            'Body': io.BytesIO(parquet_data)
         }
         
         # テスト実行
@@ -415,7 +416,7 @@ class TestS3MarketDataRepository:
     
     def test_exists_true(self):
         """データが存在する場合"""
-        # S3モック設定
+        # S3モック設定（修正: side_effect → return_value）
         self.s3_client.list_objects_v2.return_value = {
             'Contents': [
                 {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/data.parquet'}

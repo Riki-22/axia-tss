@@ -14,8 +14,8 @@ sys.path.insert(0, str(project_root))
 from src.infrastructure.config.settings import settings
 from src.infrastructure.di.container import container
 from src.infrastructure.gateways.brokers.mt5.mt5_data_collector import MT5DataCollector
-from src.infrastructure.persistence.s3.market_data_repository import S3MarketDataRepository
-from src.application.use_cases.data_collection.collect_market_data import CollectMarketDataUseCase
+from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
+from src.application.use_cases.data_collection.collect_ohlcv_data import CollectOhlcvDataUseCase
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,17 +78,17 @@ def main():
         
         # 3. S3リポジトリ作成
         logger.info("S3リポジトリを初期化中...")
-        s3_repository = S3MarketDataRepository(
+        s3_repository = S3OhlcvDataRepository(
             bucket_name=settings.s3_raw_data_bucket,
             s3_client=boto3.client('s3', region_name=settings.aws_region)
         )
         
         # 4. PriceCache取得
         logger.info("Redisキャッシュを初期化中...")
-        price_cache = container.get_price_cache()
+        ohlcv_cache = container.get_ohlcv_cache()
         
         # Redis接続確認
-        if not price_cache.redis_client.ping():
+        if not ohlcv_cache.redis_client.ping():
             logger.error("Redis接続に失敗しました")
             return 1
         
@@ -96,10 +96,10 @@ def main():
         
         # 5. ユースケース実行
         logger.info("データ収集を開始します...")
-        use_case = CollectMarketDataUseCase(
+        use_case = CollectOhlcvDataUseCase(
             mt5_data_collector=mt5_data_collector,
             s3_repository=s3_repository,
-            price_cache=price_cache,
+            ohlcv_cache=ohlcv_cache,
             symbols=settings.data_collection_symbols,
             timeframes=settings.data_collection_timeframes,
             fetch_counts=settings.data_fetch_counts

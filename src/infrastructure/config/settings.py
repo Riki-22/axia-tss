@@ -1,5 +1,5 @@
 # src/infrastructure/config/settings.py
-"""統合設定クラス - 後方互換性を維持"""
+"""統合設定クラス"""
 
 import logging
 from pathlib import Path
@@ -34,12 +34,11 @@ class Settings:
         
         # Data Collector設定（MT5のtimeframe_mapを渡す）
         self.data_collector = DataCollectorConfig(timeframe_map=self.mt5.timeframe_map)
-        
+
         # 後方互換性のため、全ての属性をフラットにコピー
         self._flatten_configs()
         
         logger.info("設定の初期化が完了しました")
-    
     def _flatten_configs(self):
         """後方互換性のため、全ての設定を直接アクセス可能にする"""
         
@@ -92,11 +91,10 @@ class Settings:
         self.data_collection_symbols = self.data_collector.data_collection_symbols
         self.data_collection_timeframes = self.data_collector.data_collection_timeframes
         self.data_fetch_counts = self.data_collector.data_fetch_counts
-    
+
     def get_mt5_credentials(self):
         """MT5認証情報を取得（後方互換性）"""
         return self.mt5.get_mt5_credentials()
-
 
 # シングルトンインスタンス
 settings = Settings()

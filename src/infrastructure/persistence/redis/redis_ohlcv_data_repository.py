@@ -1,4 +1,4 @@
-# src/infrastructure/persistence/redis/price_cache_repository.py
+# src/infrastructure/persistence/redis/redis_ohlcv_data_repository.py
 """OHLCVデータ専用キャッシュ（NYクローズ基準TTL）"""
 
 import logging
@@ -10,13 +10,13 @@ import numpy as np
 import msgpack
 import pytz
 
-from src.domain.repositories.market_data_repository import IMarketDataRepository
+from src.domain.repositories.ohlcv_data_repository import IOhlcvDataRepository
 from .redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
 
 
-class PriceCacheRepository(IMarketDataRepository):
+class RedisOhlcvDataRepository(IOhlcvDataRepository):
     """
     OHLCVデータ専用キャッシュクラス
     
@@ -50,7 +50,7 @@ class PriceCacheRepository(IMarketDataRepository):
             'cache_hits': 0,
             'cache_misses': 0
         }
-        logger.info("PriceCacheRepository initialized")
+        logger.info("RedisOhlcvDataRepository initialized")
     
     # ========================================
     # キー管理
@@ -175,68 +175,151 @@ class PriceCacheRepository(IMarketDataRepository):
     
     def _serialize_dataframe(self, df: pd.DataFrame) -> bytes:
         """
-        DataFrameをMessagePack形式にシリアライズ
+        DataFrameをシリアライズ（msgpack形式）
+        
+        pandas Timestamp を msgpack でシリアライズできないため、
+        ISO形式の文字列に変換してからシリアライズします。
         
         Args:
-            df: OHLCV DataFrame
-                - index: DatetimeIndex (UTC)
-                - columns: ['open', 'high', 'low', 'close', 'volume']
+            df: シリアライズするDataFrame
         
         Returns:
-            bytes: MessagePack形式のバイナリデータ
-        """
-        df_copy = df.copy()
+            bytes: msgpackバイナリデータ
         
-        # DatetimeIndexをUNIXタイムスタンプ（秒単位）に変換
-        if isinstance(df_copy.index, pd.DatetimeIndex):
-            df_copy.index = df_copy.index.astype(np.int64) // 10**9
+        処理フロー:
+            1. DataFrameをコピー（元データを変更しない）
+            2. インデックス情報を保存
+            3. インデックスをカラムに変換
+            4. 全datetime列をISO文字列に変換
+            5. to_dict('records') で辞書に変換
+            6. msgpack でシリアライズ
         
-        # 列指向の辞書に変換
-        data_to_pack = df_copy.reset_index().to_dict('list')
-        
-        return msgpack.packb(data_to_pack, use_bin_type=True)
-    
-    def _deserialize_dataframe(self, data: bytes) -> pd.DataFrame:
-        """
-        MessagePack形式からDataFrameを復元
-        
-        Args:
-            data: MessagePack形式のバイナリデータ
-        
-        Returns:
-            pd.DataFrame: OHLCV DataFrame
+        Note:
+            - タイムゾーン情報も保持される
+            - インデックス名も保存される
         
         Raises:
-            ValueError: データが不正な形式の場合
+            TypeError: シリアライズ失敗時
         """
         try:
-            unpacked_data = msgpack.unpackb(data, raw=False)
+            # DataFrameをコピー
+            df_copy = df.copy()
             
-            # DataFrameに復元
-            df = pd.DataFrame(unpacked_data)
+            # インデックス情報を保存
+            index_name = df_copy.index.name
+            is_datetime_index = isinstance(df_copy.index, pd.DatetimeIndex)
             
-            # 'time'列または'index'列をインデックスに設定
-            time_col = 'time' if 'time' in df.columns else 'index'
-            df = df.set_index(time_col)
+            # インデックスをカラムに変換
+            if isinstance(df_copy.index, pd.DatetimeIndex):
+                df_copy = df_copy.reset_index()
             
-            # UNIXタイムスタンプからdatetimeに復元（UTC）
-            df.index = pd.to_datetime(df.index, unit='s', utc=True)
-            df.index.name = 'time'
+            # 全datetime型カラムを文字列に変換
+            for col in df_copy.columns:
+                if pd.api.types.is_datetime64_any_dtype(df_copy[col]):
+                    df_copy[col] = df_copy[col].apply(
+                        lambda x: x.isoformat() if pd.notna(x) else None
+                    )
             
-            # 数値型を明示的に設定
-            for col in ['open', 'high', 'low', 'close']:
-                if col in df.columns:
-                    df[col] = df[col].astype(np.float64)
-            if 'volume' in df.columns:
-                df['volume'] = df['volume'].astype(np.int64)
+            # DataFrameを辞書に変換（records形式）
+            data_dict = {
+                'columns': df_copy.columns.tolist(),
+                'data': df_copy.to_dict('records'),
+                'dtypes': {col: str(dtype) for col, dtype in df.dtypes.items()},
+                'index_name': index_name,  # インデックス名を保存
+                'is_datetime_index': is_datetime_index  # インデックス型を保存
+            }
+            
+            # msgpackでシリアライズ
+            serialized = msgpack.packb(data_dict, use_bin_type=True)
+            
+            logger.debug(
+                f"Serialized DataFrame: {len(df)} rows, "
+                f"{len(serialized)} bytes"
+            )
+            
+            return serialized
+            
+        except Exception as e:
+            logger.error(f"DataFrame serialization failed: {e}", exc_info=True)
+            raise
+
+    def _deserialize_dataframe(self, data: bytes) -> pd.DataFrame:
+        """
+        バイナリデータをDataFrameにデシリアライズ
+        
+        msgpackでシリアライズされたデータをDataFrameに復元します。
+        ISO文字列として保存された timestamp_utc を datetime に変換します。
+        
+        Args:
+            data: msgpackバイナリデータ
+        
+        Returns:
+            pd.DataFrame: 復元されたDataFrame
+        
+        処理フロー:
+            1. msgpack でデシリアライズ
+            2. DataFrameに変換
+            3. datetime型カラムを復元
+            4. データ型を復元
+            5. インデックスを復元
+        
+        Note:
+            - タイムゾーン情報（UTC）も復元される
+            - カラムの順序も保持される
+            - インデックス情報も復元される
+        
+        Raises:
+            ValueError: デシリアライズ失敗時
+        """
+        try:
+            # msgpackでデシリアライズ
+            data_dict = msgpack.unpackb(data, raw=False)
+            
+            # DataFrameに変換
+            df = pd.DataFrame(data_dict['data'])
+            
+            # カラム順序を保持
+            if 'columns' in data_dict:
+                df = df[data_dict['columns']]
+            
+            # datetime型カラムを復元
+            if 'dtypes' in data_dict:
+                for col, dtype_str in data_dict['dtypes'].items():
+                    if col not in df.columns:
+                        continue
+                    
+                    # datetime型の復元
+                    if 'datetime' in dtype_str:
+                        df[col] = pd.to_datetime(df[col], utc=True)
+                    # 数値型の復元
+                    elif dtype_str.startswith('int'):
+                        df[col] = df[col].astype('int64')
+                    elif dtype_str.startswith('float'):
+                        df[col] = df[col].astype('float64')
+            
+            # インデックスを復元
+            is_datetime_index = data_dict.get('is_datetime_index', False)
+            index_name = data_dict.get('index_name')
+            
+            if is_datetime_index and index_name in df.columns:
+                # DatetimeIndexとして復元
+                df = df.set_index(index_name)
+                # インデックスをdatetime型に変換（念のため）
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index, utc=True)
+            
+            logger.debug(
+                f"Deserialized DataFrame: {len(df)} rows"
+            )
             
             return df
             
         except Exception as e:
+            logger.error(f"DataFrame deserialization failed: {e}", exc_info=True)
             raise ValueError(f"Failed to deserialize DataFrame: {e}")
     
     # ========================================
-    # IMarketDataRepository 実装
+    # IOhlcvDataRepository 実装
     # ========================================
     
     def save_ohlcv(
@@ -267,13 +350,21 @@ class PriceCacheRepository(IMarketDataRepository):
             # TTL計算
             ttl = self._calculate_ttl_until_ny_close()
             
+            # インデックスから開始・終了日時を取得
+            if isinstance(df.index, pd.DatetimeIndex) and len(df) > 0:
+                data_start = df.index[0].isoformat()
+                data_end = df.index[-1].isoformat()
+            else:
+                data_start = None
+                data_end = None
+            
             # メタデータ作成
             metadata = {
                 'symbol': symbol,
                 'timeframe': timeframe,
                 'cached_at': datetime.now(pytz.UTC).isoformat(),
-                'data_start': df.index[0].isoformat() if len(df) > 0 else None,
-                'data_end': df.index[-1].isoformat() if len(df) > 0 else None,
+                'data_start': data_start,
+                'data_end': data_end,
                 'row_count': len(df),
                 'ttl_expires_at': (datetime.now(pytz.UTC) + timedelta(seconds=ttl)).isoformat()
             }
@@ -334,6 +425,20 @@ class PriceCacheRepository(IMarketDataRepository):
             
             # デシリアライズ
             df = self._deserialize_dataframe(data)
+            
+            # インデックスがDatetimeIndexであることを確認
+            if not isinstance(df.index, pd.DatetimeIndex):
+                logger.warning(
+                    f"Index is not DatetimeIndex for {symbol} {timeframe}, "
+                    f"attempting to convert..."
+                )
+                # timestamp_utc カラムをインデックスに設定
+                if 'timestamp_utc' in df.columns:
+                    df = df.set_index('timestamp_utc')
+                    df.index = pd.to_datetime(df.index, utc=True)
+                else:
+                    logger.error(f"Cannot find timestamp_utc column in {symbol} {timeframe}")
+                    return None
             
             # 期間フィルタリング
             if start_date is not None:

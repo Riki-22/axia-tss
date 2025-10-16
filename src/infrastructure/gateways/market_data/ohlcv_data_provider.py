@@ -1,4 +1,4 @@
-# src/infrastructure/gateways/market_data/market_data_provider.py
+# src/infrastructure/gateways/market_data/ohlcv_data_provider.py
 """統合マーケットデータプロバイダー"""
 
 import logging
@@ -8,14 +8,13 @@ from typing import Optional, List, Tuple, Dict, Any
 import pandas as pd
 import pytz
 
-from src.infrastructure.persistence.redis.price_cache_repository import PriceCacheRepository
+from src.domain.repositories.ohlcv_data_repository import IOhlcvDataRepository
 from src.infrastructure.gateways.brokers.mt5.mt5_data_collector import MT5DataCollector
-from src.infrastructure.persistence.s3.market_data_repository import S3MarketDataRepository
 
 logger = logging.getLogger(__name__)
 
 
-class MarketDataProvider:
+class OhlcvDataProvider:
     """
     統合マーケットデータプロバイダー
     
@@ -40,19 +39,19 @@ class MarketDataProvider:
     
     def __init__(
         self,
-        price_cache: PriceCacheRepository,
+        ohlcv_cache: IOhlcvDataRepository,
         mt5_data_collector: Optional[MT5DataCollector] = None,
-        s3_repository: Optional[S3MarketDataRepository] = None,
+        s3_repository: Optional[IOhlcvDataRepository] = None,
         yfinance_client: Optional[Any] = None
     ):
         """
         Args:
-            price_cache: Redisキャッシュ（必須）
+            ohlcv_cache: Redisキャッシュ（必須）
             mt5_data_collector: MT5データ収集器（オプション）
             s3_repository: S3リポジトリ（オプション）
             yfinance_client: yfinanceクライアント（オプション）
         """
-        self.cache = price_cache
+        self.cache = ohlcv_cache
         self.mt5 = mt5_data_collector
         self.s3 = s3_repository
         self.yfinance = yfinance_client
@@ -76,7 +75,7 @@ class MarketDataProvider:
             'cache_misses': 0
         }
         
-        logger.info("MarketDataProvider initialized")
+        logger.info("OhlcvDataProvider initialized")
         logger.info(f"Available sources: "
                    f"redis={self.cache is not None}, "
                    f"mt5={self.mt5 is not None}, "
@@ -536,7 +535,7 @@ class MarketDataProvider:
                 }
         
         Example:
-            >>> provider = MarketDataProvider(...)
+            >>> provider = OhlcvDataProvider(...)
             >>> 
             >>> # リアルタイム取引用（24時間）
             >>> df, meta = provider.get_data('USDJPY', 'H1', 1, 'trading')
