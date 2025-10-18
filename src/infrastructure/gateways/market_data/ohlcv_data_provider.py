@@ -724,7 +724,7 @@ class OhlcvDataProvider:
         - 最新24時間分のみ保存
         - 失敗しても例外を投げない（ログ記録のみ）
         """
-        if self.ohlcv_cache is None:
+        if self.cache is None:
             return
         
         try:
@@ -769,7 +769,7 @@ class OhlcvDataProvider:
             df_to_save.rename(columns={'index': 'time'}, inplace=True)
             
             # RedisOhlcvDataRepositoryはtime列を期待
-            success = self.ohlcv_cache.save_ohlcv(
+            success = self.cache.save_ohlcv(
                 df_to_save,
                 symbol,
                 timeframe
