@@ -174,7 +174,7 @@ class DIContainer:
                 from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
                 import boto3
                 s3_repository = S3OhlcvDataRepository(
-                    bucket_name=self.settings.data_collector.s3_raw_data_bucket,
+                    bucket_name=self.settings.s3_raw_data_bucket,
                     s3_client=boto3.client('s3', region_name=self.settings.aws_region)
                 )
                 logger.info("S3 repository available")

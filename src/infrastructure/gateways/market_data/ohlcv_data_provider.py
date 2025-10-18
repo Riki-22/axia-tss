@@ -716,7 +716,7 @@ class OhlcvDataProvider:
         取得データをRedisに自動キャッシュ
         
         Args:
-            df: OHLCVデータ（time列がインデックス想定）
+            df: OHLCVデータ（time列またはインデックスがdatetime）
             symbol: 通貨ペア
             timeframe: タイムフレーム
         
@@ -728,37 +728,56 @@ class OhlcvDataProvider:
             return
         
         try:
+            import logging
             from datetime import datetime, timedelta
             import pytz
             
+            _logger = logging.getLogger(__name__)
+            
             # DataFrameが空でないことを確認
             if df is None or df.empty:
-                logger.debug("No data to cache (empty DataFrame)")
+                _logger.debug("No data to cache (empty DataFrame)")
                 return
             
+            # DataFrameのコピーを作成
+            df_work = df.copy()
+            
+            # time列の確認と処理
+            if 'time' in df_work.columns:
+                # time列がカラムとして存在する場合 → インデックスに設定
+                if not pd.api.types.is_datetime64_any_dtype(df_work['time']):
+                    # datetime型でない場合は変換を試みる
+                    try:
+                        df_work['time'] = pd.to_datetime(df_work['time'])
+                    except Exception as e:
+                        _logger.warning(f"Cannot convert time column to datetime: {e}")
+                        return
+                
+                # time列をインデックスに設定
+                df_work = df_work.set_index('time')
+            
             # インデックスがdatetime型であることを確認
-            if not pd.api.types.is_datetime64_any_dtype(df.index):
-                logger.warning("Cannot cache: index is not datetime type")
+            if not pd.api.types.is_datetime64_any_dtype(df_work.index):
+                _logger.warning(
+                    f"Cannot cache {symbol} {timeframe}: "
+                    f"index is not datetime type (type={type(df_work.index)})"
+                )
                 return
+            
+            # タイムゾーン処理
+            if df_work.index.tz is None:
+                # タイムゾーンなし → UTCとして扱う
+                df_work.index = df_work.index.tz_localize(pytz.UTC)
+            else:
+                # タイムゾーンあり → UTCに変換
+                df_work.index = df_work.index.tz_convert(pytz.UTC)
             
             # 24時間分にフィルタリング
             cutoff = datetime.now(pytz.UTC) - timedelta(hours=24)
-            
-            # インデックスのタイムゾーン処理
-            if df.index.tz is None:
-                # タイムゾーンなし → UTCとして扱う
-                df_tz = df.copy()
-                df_tz.index = df_tz.index.tz_localize(pytz.UTC)
-            else:
-                # タイムゾーンあり → UTCに変換
-                df_tz = df.copy()
-                df_tz.index = df_tz.index.tz_convert(pytz.UTC)
-            
-            # フィルタリング
-            df_recent = df_tz[df_tz.index >= cutoff]
+            df_recent = df_work[df_work.index >= cutoff]
             
             if len(df_recent) == 0:
-                logger.debug(
+                _logger.debug(
                     f"No recent data to cache for {symbol} {timeframe} "
                     f"(all data older than 24 hours)"
                 )
@@ -768,7 +787,11 @@ class OhlcvDataProvider:
             df_to_save = df_recent.reset_index()
             df_to_save.rename(columns={'index': 'time'}, inplace=True)
             
-            # RedisOhlcvDataRepositoryはtime列を期待
+            # 不要なカラムを削除（もしあれば）
+            expected_columns = ['time', 'open', 'high', 'low', 'close', 'volume']
+            df_to_save = df_to_save[[col for col in expected_columns if col in df_to_save.columns]]
+            
+            # RedisOhlcvDataRepositoryに保存
             success = self.cache.save_ohlcv(
                 df_to_save,
                 symbol,
@@ -776,17 +799,22 @@ class OhlcvDataProvider:
             )
             
             if success:
-                logger.info(
-                    f"Cached {len(df_recent)} rows for {symbol} {timeframe}"
+                _logger.info(
+                    f"Auto-cached {len(df_recent)} rows for {symbol} {timeframe}"
                 )
             else:
-                logger.warning(
-                    f"Failed to cache data for {symbol} {timeframe}"
+                _logger.warning(
+                    f"Failed to auto-cache {symbol} {timeframe}"
                 )
             
         except Exception as e:
             # キャッシュ失敗してもデータ取得は成功扱い
-            logger.warning(f"Cache save error (ignored): {e}", exc_info=True)
+            import logging
+            _logger = logging.getLogger(__name__)
+            _logger.warning(
+                f"Exception during auto-cache for {symbol} {timeframe}: {e}",
+                exc_info=True
+            )
     
     def _update_stats(
         self,
