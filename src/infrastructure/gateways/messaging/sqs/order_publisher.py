@@ -76,7 +76,23 @@ class SQSOrderPublisher:
             # Step 2: JSON化
             message_body = json.dumps(order_data, ensure_ascii=False)
             
-            # Step 3: SQS送信
+            # Step 3: SQSクライアントチェック
+            if self.sqs_client is None:
+                # モックモード（AWS接続なし）
+                import uuid
+                mock_message_id = f"mock-{uuid.uuid4().hex[:16]}"
+                
+                logger.warning(
+                    f"[MOCK MODE] Order would be sent to SQS: "
+                    f"{order_data['symbol']} {order_data['order_action']} "
+                    f"{order_data['lot_size']} lot"
+                )
+                logger.info(f"[MOCK MODE] MessageID: {mock_message_id}")
+                logger.debug(f"[MOCK MODE] Message body: {message_body}")
+                
+                return True, mock_message_id
+            
+            # Step 4: SQS送信（本番モード）
             logger.info(
                 f"Sending order to SQS: "
                 f"{order_data['symbol']} {order_data['order_action']} "
@@ -88,7 +104,7 @@ class SQSOrderPublisher:
                 MessageBody=message_body
             )
             
-            # Step 4: 送信結果確認
+            # Step 5: 送信結果確認
             message_id = response.get('MessageId')
             
             if message_id:

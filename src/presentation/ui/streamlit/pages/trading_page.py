@@ -11,7 +11,7 @@ container = DIContainer()
 
 
 def render_trading_page():
-    """チャートページのレンダリング"""
+    """チャートページのレンダリング（注文機能付き）"""
     
     # データソース取得
     data_source = get_chart_data_source()
@@ -59,7 +59,7 @@ def render_trading_page():
 
 def _render_order_panel(chart_symbol: str, order_publisher):
     """
-    注文パネルのレンダリング
+    注文パネルのレンダリング（完全実装版）
     
     機能:
     - ロット数、TP/SL設定
@@ -257,8 +257,12 @@ def _execute_order(
             risk_amount = lot_size * sl_pips * 100
             profit_amount = lot_size * tp_pips * 100
             
+            # MOCKモード判定
+            is_mock = message.startswith('mock-')
+            mode_label = "🧪 **MOCK MODE**" if is_mock else "✅"
+            
             st.success(f"""
-            ✅ **{action}注文を送信しました**
+            {mode_label} **{action}注文を送信しました**
             
             **注文内容**:
             - 通貨ペア: `{symbol}`
@@ -274,9 +278,9 @@ def _execute_order(
             
             **処理状況**:
             - MessageID: `{message[:30]}...`
-            - order_managerで処理中...
+            {('- ⚠️ AWS未接続のため実際の注文は実行されません' if is_mock else '- order_managerで処理中...')}
             
-            💡 **ポジションページ**で実行結果を確認できます
+            {('💡 AWS認証情報を設定すると実際のSQS送信が可能になります' if is_mock else '💡 **ポジションページ**で実行結果を確認できます')}
             """)
             
             logger.info(
