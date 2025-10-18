@@ -31,7 +31,7 @@ Parameters:
   Ec2InstanceType:
     Type: String
     Description: The instance type for the TSS EC2 Server.
-    Default: "t3.micro"
+    Default: "t3.small"
   Ec2AmiId:
     Type: String
     Description: The AMI ID for the TSS EC2 Server.
@@ -327,6 +327,11 @@ Resources:
           ToPort: 3389
           CidrIp: !Ref AllowedSshCidr
           Description: "RDP access from allowed IP"
+        - IpProtocol: tcp
+          FromPort: 8501
+          ToPort: 8501
+          CidrIp: !Ref AllowedSshCidr
+          Description: "Streamlit UI access from allowed IP"
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: "0.0.0.0/0"

@@ -705,57 +705,88 @@ class OhlcvDataProvider:
             'response_time': total_time,
             'fallback_count': fallback_count
         }
-    
+        
     def _cache_result(
         self,
         df: pd.DataFrame,
         symbol: str,
         timeframe: str
-    ):
+    ) -> None:
         """
-        取得したデータをRedisに自動キャッシュ
+        取得データをRedisに自動キャッシュ
         
         Args:
-            df: OHLCVデータ
+            df: OHLCVデータ（time列がインデックス想定）
             symbol: 通貨ペア
             timeframe: タイムフレーム
         
         ルール:
-            - 最新24時間分のみキャッシュ
-            - それ以前のデータは破棄
-            - キャッシュ失敗はログ記録のみ（例外を投げない）
+        - 最新24時間分のみ保存
+        - 失敗しても例外を投げない（ログ記録のみ）
         """
+        if self.ohlcv_cache is None:
+            return
+        
         try:
+            from datetime import datetime, timedelta
+            import pytz
+            
+            # DataFrameが空でないことを確認
+            if df is None or df.empty:
+                logger.debug("No data to cache (empty DataFrame)")
+                return
+            
+            # インデックスがdatetime型であることを確認
+            if not pd.api.types.is_datetime64_any_dtype(df.index):
+                logger.warning("Cannot cache: index is not datetime type")
+                return
+            
             # 24時間分にフィルタリング
             cutoff = datetime.now(pytz.UTC) - timedelta(hours=24)
-            df_recent = df[df.index >= cutoff]
             
-            if len(df_recent) > 0:
-                # PriceCacheに保存を委譲
-                success = self.cache.save_ohlcv(
-                    df_recent, symbol, timeframe
-                )
-                
-                if success:
-                    logger.info(
-                        f"Auto-cached {len(df_recent)} rows "
-                        f"for {symbol} {timeframe}"
-                    )
-                else:
-                    logger.warning(
-                        f"Failed to cache {symbol} {timeframe}"
-                    )
+            # インデックスのタイムゾーン処理
+            if df.index.tz is None:
+                # タイムゾーンなし → UTCとして扱う
+                df_tz = df.copy()
+                df_tz.index = df_tz.index.tz_localize(pytz.UTC)
             else:
+                # タイムゾーンあり → UTCに変換
+                df_tz = df.copy()
+                df_tz.index = df_tz.index.tz_convert(pytz.UTC)
+            
+            # フィルタリング
+            df_recent = df_tz[df_tz.index >= cutoff]
+            
+            if len(df_recent) == 0:
                 logger.debug(
-                    f"No recent data to cache for {symbol} {timeframe}"
+                    f"No recent data to cache for {symbol} {timeframe} "
+                    f"(all data older than 24 hours)"
                 )
-        
+                return
+            
+            # Redis保存（インデックスをtime列に戻す）
+            df_to_save = df_recent.reset_index()
+            df_to_save.rename(columns={'index': 'time'}, inplace=True)
+            
+            # RedisOhlcvDataRepositoryはtime列を期待
+            success = self.ohlcv_cache.save_ohlcv(
+                df_to_save,
+                symbol,
+                timeframe
+            )
+            
+            if success:
+                logger.info(
+                    f"Cached {len(df_recent)} rows for {symbol} {timeframe}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to cache data for {symbol} {timeframe}"
+                )
+            
         except Exception as e:
             # キャッシュ失敗してもデータ取得は成功扱い
-            logger.warning(
-                f"Exception during auto-cache: {e}",
-                exc_info=True
-            )
+            logger.warning(f"Cache save error (ignored): {e}", exc_info=True)
     
     def _update_stats(
         self,
@@ -959,50 +990,3 @@ class OhlcvDataProvider:
         
         return None, metadata
     
-    # ========================================
-    # キャッシュ結果保存
-    # ========================================
-    
-    def _cache_result(
-        self,
-        df: pd.DataFrame,
-        symbol: str,
-        timeframe: str
-    ):
-        """
-        取得したデータをRedisにキャッシュ
-        
-        ルール:
-        - 最新24時間分のみキャッシュ
-        - キャッシュ失敗しても例外を投げない
-        
-        Args:
-            df: OHLCVデータ
-            symbol: 通貨ペア
-            timeframe: 時間足
-        """
-        if not self.cache:
-            return
-        
-        try:
-            # 最新24時間分のみ抽出
-            cutoff = datetime.now(pytz.UTC) - timedelta(hours=24)
-            df_to_cache = df[df.index >= cutoff]
-            
-            if len(df_to_cache) > 0:
-                success = self.cache.save_ohlcv_with_metadata(
-                    df_to_cache, symbol, timeframe
-                )
-                
-                if success:
-                    logger.info(
-                        f"Cached to Redis: {symbol} {timeframe} "
-                        f"({len(df_to_cache)} rows)"
-                    )
-                else:
-                    logger.warning(
-                        f"Failed to cache: {symbol} {timeframe}"
-                    )
-        except Exception as e:
-            # キャッシュ失敗は無視（フォールバックなし）
-            logger.warning(f"Cache save error (ignored): {e}")

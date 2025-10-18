@@ -19,7 +19,6 @@ class PriceChartComponent:
     """
     価格チャート表示コンポーネント（統合レイヤー）
     
-    Day 2対応:
     - ChartDataSource直接生成 → get_chart_data_source()経由
     - OhlcvDataProvider統合対応
     - メタデータ対応
