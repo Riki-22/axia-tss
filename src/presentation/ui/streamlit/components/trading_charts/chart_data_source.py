@@ -80,8 +80,8 @@ class ChartDataSource:
             }
         
         try:
-            # OhlcvDataProviderから取得（鮮度チェック付き）
-            df, metadata = self.data_provider.get_data_with_freshness(
+            # OhlcvDataProviderからデータ取得
+            df, metadata = self.data_provider.get_data(
                 symbol=symbol,
                 timeframe=timeframe,
                 period_days=period_days,
@@ -89,16 +89,21 @@ class ChartDataSource:
             )
             
             if df is None or df.empty:
-                logger.warning(
-                    f"No data available: {symbol} {timeframe}"
-                )
+                logger.warning(f"No data available: {symbol} {timeframe}")
                 return None, metadata
+            
+            # time列をインデックスに変換（チャート描画用）
+            if 'time' in df.columns:
+                df = df.set_index('time')
+                logger.debug(f"Set 'time' as index for chart rendering")
+            
+            # メタデータ更新
+            metadata['rows'] = len(df)
             
             logger.info(
                 f"Data loaded: {symbol} {timeframe}, "
-                f"source={metadata.get('source')}, "
-                f"rows={len(df)}, "
-                f"fresh={metadata.get('fresh')}"
+                f"source={metadata.get('source')}, rows={len(df)}, "
+                f"fresh={metadata.get('fresh', False)}"
             )
             
             return df, metadata

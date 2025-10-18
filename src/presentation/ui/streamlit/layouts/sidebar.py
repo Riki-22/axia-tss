@@ -21,7 +21,7 @@ def render_sidebar(db_service, kill_switch_status: Dict[str, Any]):
 
 def _render_system_status(kill_switch_status: Dict[str, Any]):
     """システムステータスの表示"""
-    st.markdown("#### 📡 システムステータス")
+    st.markdown("#### 💓 システムステータス")
     
     if kill_switch_status.get('active'):
         st.error("🚨 **KILL SWITCH ACTIVE** - 全取引停止中")

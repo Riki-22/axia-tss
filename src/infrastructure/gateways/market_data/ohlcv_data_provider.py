@@ -427,7 +427,7 @@ class OhlcvDataProvider:
         period_days: int
     ) -> Optional[pd.DataFrame]:
         """
-        yfinanceからデータ取得
+        yfinanceからデータを取得
         
         Args:
             symbol: 通貨ペア
@@ -435,10 +435,8 @@ class OhlcvDataProvider:
             period_days: 取得日数
         
         Returns:
-            pd.DataFrame or None
-        
-        Note:
-            Phase 2では最小限の実装。Phase 3で詳細実装予定。
+            pd.DataFrame: OHLCVデータ
+            None: 取得失敗
         """
         try:
             logger.info(
@@ -451,10 +449,79 @@ class OhlcvDataProvider:
                 logger.warning("yfinance client not available")
                 return None
             
-            # yfinance実装（最小限）
-            # TODO: Phase 3で詳細実装
-            logger.warning("yfinance fetch not fully implemented yet")
-            return None
+            # YFinanceGatewayのfetch_ohlcvメソッドを使用
+            # 期間マッピング: 30日 → '1mo', 90日 → '3mo', 365日 → '1y'
+            if period_days <= 7:
+                period = '7d'
+            elif period_days <= 30:
+                period = '1mo'
+            elif period_days <= 90:
+                period = '3mo'
+            elif period_days <= 180:
+                period = '6mo'
+            elif period_days <= 365:
+                period = '1y'
+            else:
+                period = '2y'
+            
+            # YFinanceGateway.fetch_ohlcvを呼び出し
+            df = self.yfinance.fetch_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                period=period
+            )
+            
+            if df is None or df.empty:
+                logger.warning(f"No data returned from yfinance: {symbol} {timeframe}")
+                return None
+            
+            # YFinanceGatewayは既に標準OHLCV形式を返すが、
+            # カラム名がインデックス+OHLCV形式なので、必要に応じて変換
+            
+            # インデックスを'time'カラムに変換（OhlcvDataProviderの標準形式）
+            if 'time' not in df.columns and df.index.name is not None:
+                df = df.reset_index()
+                df.rename(columns={df.columns[0]: 'time'}, inplace=True)
+            
+            # カラム名の小文字化（念のため）
+            df.columns = [col.lower() for col in df.columns]
+            
+            # 必要なカラムのみ抽出
+            required_columns = ['time', 'open', 'high', 'low', 'close', 'volume']
+            available_columns = [col for col in required_columns if col in df.columns]
+            
+            if 'time' not in available_columns:
+                logger.error(f"Missing 'time' column in yfinance data for {symbol}")
+                return None
+            
+            df = df[available_columns]
+            
+            # period_daysでフィルタリング（yfinanceが多めに返す場合がある）
+            if period_days and period_days > 0 and 'time' in df.columns:
+                from datetime import datetime, timedelta
+                import pytz
+                
+                cutoff = datetime.now(pytz.UTC) - timedelta(days=period_days)
+                
+                # time列をdatetimeに変換（必要な場合）
+                if not pd.api.types.is_datetime64_any_dtype(df['time']):
+                    df['time'] = pd.to_datetime(df['time'])
+                
+                # タイムゾーン処理
+                if df['time'].dt.tz is None:
+                    df['time'] = df['time'].dt.tz_localize(pytz.UTC)
+                else:
+                    df['time'] = df['time'].dt.tz_convert(pytz.UTC)
+                
+                # フィルタリング
+                df = df[df['time'] >= cutoff]
+            
+            logger.info(
+                f"Successfully fetched {len(df)} rows from yfinance: "
+                f"{symbol} {timeframe}"
+            )
+            
+            return df
             
         except Exception as e:
             logger.error(f"Error fetching from yfinance: {e}", exc_info=True)

@@ -429,10 +429,50 @@ class ChartRenderer:
             row=1, col=1
         )
     
-    def _add_data_source_annotation(self, fig: go.Figure, data_source: str):
-        """データソース情報をアノテーションとして追加"""
+    def _add_data_source_annotation(self, fig: go.Figure, data_source: dict):
+        """
+        データソース情報をアノテーションとして追加
+        
+        Args:
+            data_source: dict or str
+                - dict: {'source': str, 'cache_hit': bool, 'rows': int, 'fresh': bool}
+                - str: データソース名
+        """
+        # data_sourceがdictの場合は整形
+        if isinstance(data_source, dict):
+            source = data_source.get('source', 'unknown').upper()
+            rows = data_source.get('rows', 0)
+            cache_hit = data_source.get('cache_hit', False)
+            fresh = data_source.get('fresh', False)
+            
+            # ソース別のアイコン
+            emoji_map = {
+                'REDIS': '⚡',
+                'MT5': '🔌',
+                'S3': '📦',
+                'YFINANCE': '🌐',
+            }
+            emoji = emoji_map.get(source, '❓')
+            
+            # キャッシュ状態
+            cache_status = "Cache Hit" if cache_hit else "Fresh Fetch"
+            
+            # 鮮度
+            freshness = "✅ Fresh" if fresh else "ℹ️ Cached"
+            
+            text = (
+                f"{emoji} {source} | "
+                f"{rows:,} rows | "
+                f"{cache_status} | "
+                f"{freshness} | "
+                f"Update: {datetime.now().strftime('%H:%M:%S')}"
+            )
+        else:
+            # 文字列の場合はそのまま使用（後方互換性）
+            text = f"Data Source: {data_source} | Update: {datetime.now().strftime('%H:%M:%S')}"
+        
         fig.add_annotation(
-            text=f"Data Source: {data_source} | Update: {datetime.now().strftime('%H:%M:%S')}",
+            text=text,
             xref="paper", yref="paper",
             x=1, y=1.02,
             xanchor="right",
