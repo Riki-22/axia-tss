@@ -707,3 +707,235 @@ class OhlcvDataProvider:
         if success:
             self._stats['source_usage'][source] += 1
             self._stats['response_times'][source].append(response_time)
+
+    # ========================================
+    # 最大データエイジ取得
+    # ========================================
+    
+    def _get_max_age(self, timeframe: str) -> timedelta:
+        """
+        時間足に応じた許容される最大データ年齢を取得
+        
+        短い時間足ほど頻繁な更新が必要:
+        - M1/M5: 数分以内の最新データが必要
+        - H1/H4: 数時間以内で許容
+        - D1/W1: 1日〜1週間で許容
+        
+        Args:
+            timeframe: 時間足（'M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN1'）
+        
+        Returns:
+            timedelta: 許容される最大データ年齢
+        
+        Example:
+            >>> provider = OhlcvDataProvider(...)
+            >>> max_age = provider._get_max_age('H1')
+            >>> print(max_age)  # 2時間
+        """
+        age_map = {
+            'M1': timedelta(minutes=5),    # 1分足: 5分以内
+            'M5': timedelta(minutes=15),   # 5分足: 15分以内
+            'M15': timedelta(minutes=30),  # 15分足: 30分以内
+            'M30': timedelta(hours=1),     # 30分足: 1時間以内
+            'H1': timedelta(hours=2),      # 1時間足: 2時間以内
+            'H4': timedelta(hours=6),      # 4時間足: 6時間以内
+            'D1': timedelta(days=1),       # 日足: 1日以内
+            'W1': timedelta(days=7),       # 週足: 1週間以内
+            'MN1': timedelta(days=30),     # 月足: 1ヶ月以内
+        }
+        
+        return age_map.get(timeframe, timedelta(hours=1))  # デフォルト: 1時間
+    
+    # ========================================
+    # get_data更新（鮮度チェック付き）
+    # ========================================
+    
+    def get_data_with_freshness(
+        self,
+        symbol: str,
+        timeframe: str,
+        period_days: int = 1,
+        use_case: str = 'trading',
+        force_source: str | None = None
+    ) -> tuple:
+        """
+        マーケットデータを取得（鮮度チェック付き）
+        
+        処理フロー:
+        1. Redisキャッシュをチェック（利用可能な場合）
+        2. データが存在し、かつ新鮮な場合 → 即座に返却
+        3. データが古い、または存在しない場合 → 他ソースから取得
+        4. 取得成功時 → Redisに自動保存（利用可能な場合）
+        
+        Args:
+            symbol: 通貨ペア
+            timeframe: 時間足
+            period_days: 取得日数
+            use_case: ユースケース
+            force_source: 強制使用するソース
+        
+        Returns:
+            tuple: (DataFrame, metadata)
+                metadata: {
+                    'source': str,
+                    'cache_hit': bool,
+                    'data_age': float (秒),
+                    'fresh': bool,
+                    'response_time': float (秒),
+                    ...
+                }
+        """
+        import time
+        start_time = time.time()
+        
+        metadata = {
+            'requested_at': datetime.now(pytz.UTC),
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'use_case': use_case
+        }
+        
+        # ========================================
+        # Step 1: Redisキャッシュチェック（利用可能な場合のみ）
+        # ========================================
+        if self.cache:
+            try:
+                df, cache_meta = self.cache.load_ohlcv_with_metadata(
+                    symbol, timeframe, days=period_days
+                )
+                
+                if df is not None and cache_meta:
+                    # データ年齢計算
+                    age = datetime.now(pytz.UTC) - cache_meta['updated_at']
+                    max_age = self._get_max_age(timeframe)
+                    
+                    # 鮮度チェック
+                    if age < max_age:
+                        # ✅ 新鮮なデータ
+                        metadata.update({
+                            'source': 'redis',
+                            'cache_hit': True,
+                            'data_age': age.total_seconds(),
+                            'fresh': True,
+                            'response_time': time.time() - start_time,
+                            'row_count': len(df)
+                        })
+                        
+                        logger.info(
+                            f"Fresh cache hit: {symbol} {timeframe} "
+                            f"(age: {age.total_seconds():.0f}s < "
+                            f"max: {max_age.total_seconds():.0f}s)"
+                        )
+                        
+                        return df, metadata
+                    else:
+                        # ⚠️ 古いデータ
+                        logger.info(
+                            f"Stale cache: {symbol} {timeframe} "
+                            f"(age: {age.total_seconds():.0f}s > "
+                            f"max: {max_age.total_seconds():.0f}s)"
+                        )
+                        metadata['stale_cache_age'] = age.total_seconds()
+            except Exception as e:
+                logger.warning(f"Redis cache check failed (ignored): {e}")
+        
+        # ========================================
+        # Step 2: データソースから取得
+        # ========================================
+        if force_source:
+            sources = [force_source]
+        else:
+            sources = self._get_source_priority(use_case, period_days)
+        
+        # 利用可能なソースのみにフィルタ
+        available_sources = self._filter_available_sources(sources)
+        
+        for source_name in available_sources:
+            df = self._fetch_from_source(
+                source_name, symbol, timeframe, period_days
+            )
+            
+            if df is not None and not df.empty:
+                # ========================================
+                # Step 3: 取得成功 → Redisに自動保存（利用可能な場合）
+                # ========================================
+                if source_name != 'redis' and self.cache:
+                    self._cache_result(df, symbol, timeframe)
+                
+                metadata.update({
+                    'source': source_name,
+                    'cache_hit': False,
+                    'rows': len(df),
+                    'fresh': True,
+                    'response_time': time.time() - start_time
+                })
+                
+                logger.info(
+                    f"Data fetched from {source_name}: {symbol} {timeframe} "
+                    f"({len(df)} rows, {metadata['response_time']:.2f}s)"
+                )
+                
+                return df, metadata
+        
+        # ========================================
+        # Step 4: 全ソース失敗
+        # ========================================
+        metadata.update({
+            'error': 'All sources failed',
+            'response_time': time.time() - start_time
+        })
+        
+        logger.error(
+            f"Failed to fetch data: {symbol} {timeframe} "
+            f"(tried: {available_sources})"
+        )
+        
+        return None, metadata
+    
+    # ========================================
+    # キャッシュ結果保存
+    # ========================================
+    
+    def _cache_result(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        timeframe: str
+    ):
+        """
+        取得したデータをRedisにキャッシュ
+        
+        ルール:
+        - 最新24時間分のみキャッシュ
+        - キャッシュ失敗しても例外を投げない
+        
+        Args:
+            df: OHLCVデータ
+            symbol: 通貨ペア
+            timeframe: 時間足
+        """
+        if not self.cache:
+            return
+        
+        try:
+            # 最新24時間分のみ抽出
+            cutoff = datetime.now(pytz.UTC) - timedelta(hours=24)
+            df_to_cache = df[df.index >= cutoff]
+            
+            if len(df_to_cache) > 0:
+                success = self.cache.save_ohlcv_with_metadata(
+                    df_to_cache, symbol, timeframe
+                )
+                
+                if success:
+                    logger.info(
+                        f"Cached to Redis: {symbol} {timeframe} "
+                        f"({len(df_to_cache)} rows)"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to cache: {symbol} {timeframe}"
+                    )
+        except Exception as e:
+            # キャッシュ失敗は無視（フォールバックなし）
+            logger.warning(f"Cache save error (ignored): {e}")

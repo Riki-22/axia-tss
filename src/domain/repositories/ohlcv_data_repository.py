@@ -2,7 +2,8 @@
 """マーケットデータリポジトリのインターフェース定義"""
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 from typing import Optional, Tuple
 import pandas as pd
 
@@ -126,3 +127,235 @@ class IOhlcvDataRepository(ABC):
             - データに欠損がある場合でも、最古と最新の日時を返す
         """
         pass
+
+    # ========================================
+    # メタデータ付き保存
+    # ========================================
+    
+    def save_ohlcv_with_metadata(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        timeframe: str
+    ) -> bool:
+        """
+        OHLCVデータをメタデータ付きでRedisに保存
+        
+        保存内容:
+        - {key}:data - シリアライズされたDataFrame
+        - {key}:meta - メタデータ（更新時刻、行数、通貨ペア、時間足）
+        
+        Args:
+            df: OHLCVデータ
+            symbol: 通貨ペア
+            timeframe: 時間足
+        
+        Returns:
+            bool: 保存成功時True
+        
+        Example:
+            >>> repo = RedisOhlcvDataRepository()
+            >>> df = pd.DataFrame(...)
+            >>> repo.save_ohlcv_with_metadata(df, 'USDJPY', 'H1')
+            True
+        """
+        try:
+            key = f"ohlcv:{symbol}:{timeframe}"
+            
+            # データシリアライズ（既存メソッド使用）
+            data = self._serialize_dataframe(df)
+            
+            # メタデータ作成
+            metadata = {
+                'updated_at': datetime.now(pytz.UTC).isoformat(),
+                'row_count': len(df),
+                'symbol': symbol,
+                'timeframe': timeframe,
+                'start_time': df.index[0].isoformat() if len(df) > 0 else None,
+                'end_time': df.index[-1].isoformat() if len(df) > 0 else None
+            }
+            
+            # TTL計算（既存メソッド使用）
+            ttl = self._calculate_ttl_until_ny_close()
+            
+            # パイプラインで一括保存
+            pipeline = self.redis_client.pipeline()
+            pipeline.set(f"{key}:data", data)
+            pipeline.set(f"{key}:meta", json.dumps(metadata))
+            pipeline.expire(f"{key}:data", ttl)
+            pipeline.expire(f"{key}:meta", ttl)
+            results = pipeline.execute()
+            
+            if all(results):
+                logger.info(
+                    f"Saved to Redis with metadata: {symbol} {timeframe} "
+                    f"({len(df)} rows, TTL={ttl}s)"
+                )
+                return True
+            else:
+                logger.error(f"Failed to save to Redis: {symbol} {timeframe}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error saving to Redis with metadata: {e}", exc_info=True)
+            return False
+    
+    # ========================================
+    # メタデータ付き読み込み
+    # ========================================
+    
+    def load_ohlcv_with_metadata(
+        self,
+        symbol: str,
+        timeframe: str,
+        days: int = 1
+    ) -> tuple:
+        """
+        OHLCVデータとメタデータを取得
+        
+        Args:
+            symbol: 通貨ペア
+            timeframe: 時間足
+            days: 取得日数（期間フィルタリング用）
+        
+        Returns:
+            tuple: (DataFrame, metadata_dict) or (None, None)
+                DataFrame: OHLCVデータ
+                metadata_dict: {
+                    'updated_at': datetime,
+                    'row_count': int,
+                    'symbol': str,
+                    'timeframe': str,
+                    'start_time': datetime,
+                    'end_time': datetime
+                }
+        
+        Example:
+            >>> repo = RedisOhlcvDataRepository()
+            >>> df, meta = repo.load_ohlcv_with_metadata('USDJPY', 'H1')
+            >>> if df is not None:
+            ...     print(f"Updated: {meta['updated_at']}")
+            ...     print(f"Rows: {meta['row_count']}")
+        """
+        try:
+            key = f"ohlcv:{symbol}:{timeframe}"
+            
+            # データとメタデータを取得
+            data = self.redis_client.get(f"{key}:data")
+            meta_json = self.redis_client.get(f"{key}:meta")
+            
+            if not data or not meta_json:
+                logger.debug(f"Cache miss: {symbol} {timeframe}")
+                return None, None
+            
+            # デシリアライズ
+            df = self._deserialize_dataframe(data)
+            metadata = json.loads(meta_json)
+            
+            # datetime型に変換
+            metadata['updated_at'] = datetime.fromisoformat(
+                metadata['updated_at']
+            )
+            if metadata.get('start_time'):
+                metadata['start_time'] = datetime.fromisoformat(
+                    metadata['start_time']
+                )
+            if metadata.get('end_time'):
+                metadata['end_time'] = datetime.fromisoformat(
+                    metadata['end_time']
+                )
+            
+            # 期間フィルタリング
+            if days and days > 0:
+                cutoff = datetime.now(pytz.UTC) - timedelta(days=days)
+                df = df[df.index >= cutoff]
+            
+            # データ鮮度計算
+            age = datetime.now(pytz.UTC) - metadata['updated_at']
+            
+            logger.info(
+                f"Cache hit: {symbol} {timeframe} "
+                f"({len(df)} rows, age={age.total_seconds():.0f}s)"
+            )
+            
+            return df, metadata
+            
+        except Exception as e:
+            logger.error(f"Error loading from Redis: {e}", exc_info=True)
+            return None, None
+    
+    # ========================================
+    # データエイジ取得
+    # ========================================
+    
+    def get_data_age(
+        self,
+        symbol: str,
+        timeframe: str
+    ) -> timedelta | None:
+        """
+        キャッシュされたデータエイジを取得
+        
+        Args:
+            symbol: 通貨ペア
+            timeframe: 時間足
+        
+        Returns:
+            timedelta: データのエイジ（現在時刻 - 更新時刻）
+            None: データが存在しない場合
+        
+        Example:
+            >>> repo = RedisOhlcvDataRepository()
+            >>> age = repo.get_data_age('USDJPY', 'H1')
+            >>> if age and age < timedelta(hours=1):
+            ...     print("データは新鮮です")
+        """
+        try:
+            key = f"ohlcv:{symbol}:{timeframe}:meta"
+            meta_json = self.redis_client.get(key)
+            
+            if not meta_json:
+                return None
+            
+            metadata = json.loads(meta_json)
+            updated_at = datetime.fromisoformat(metadata['updated_at'])
+            
+            age = datetime.now(pytz.UTC) - updated_at
+            return age
+            
+        except Exception as e:
+            logger.error(f"Error getting data age: {e}", exc_info=True)
+            return None
+    
+    # ========================================
+    # データ鮮度チェック
+    # ========================================
+    
+    def is_fresh(
+        self,
+        symbol: str,
+        timeframe: str,
+        max_age: timedelta
+    ) -> bool:
+        """
+        データが十分新鮮かチェック
+        
+        Args:
+            symbol: 通貨ペア
+            timeframe: 時間足
+            max_age: 許容される最大鮮度
+        
+        Returns:
+            bool: データが新鮮な場合True
+        
+        Example:
+            >>> repo = RedisOhlcvDataRepository()
+            >>> if repo.is_fresh('USDJPY', 'H1', timedelta(hours=2)):
+            ...     print("データは2時間以内で新鮮です")
+        """
+        age = self.get_data_age(symbol, timeframe)
+        
+        if age is None:
+            return False
+        
+        return age < max_age

@@ -11,7 +11,7 @@ container = DIContainer()
 
 
 def render_trading_page():
-    """チャートページのレンダリング（注文機能付き）"""
+    """チャートページ"""
     
     # データソース取得
     data_source = get_chart_data_source()
@@ -46,15 +46,44 @@ def render_trading_page():
         days = st.number_input("日数", 1, 90, 30, key="chart_days")
     
     with col4:
-        if st.button("🔄 リロード", key="refresh_chart"):
-            st.rerun()
+        # 🔄リロードボタン（force_refresh）
+        if st.button("🔄 リロード", key="refresh_chart", help="MT5から最新データを取得"):
+            with st.spinner("最新データ取得中..."):
+                df, metadata = data_source.force_refresh(
+                    chart_symbol, chart_timeframe, days
+                )
+            if df is not None:
+                st.success("✅ 最新データを取得しました")
+                st.rerun()
+            else:
+                st.error("❌ データ取得に失敗しました")
+                if 'error' in metadata:
+                    st.caption(f"エラー: {metadata['error']}")
     
     # 注文パネル（order_publisherがある場合のみ）
     if order_publisher:
         _render_order_panel(chart_symbol, order_publisher)
     
-    # チャート表示
-    _render_chart(chart_symbol, chart_timeframe)
+    # データ取得 + 鮮度表示
+    with st.spinner('Loading chart...'):
+        df, metadata = data_source.get_ohlcv_data(
+            chart_symbol, chart_timeframe, days
+        )
+    
+    if df is not None:
+        # データ鮮度情報表示
+        _render_data_freshness(metadata)
+        
+        # データソース情報（サイドバー）
+        _render_data_info_sidebar(chart_symbol, chart_timeframe, metadata)
+        
+        # チャート描画
+        _render_chart_display(df, chart_symbol, chart_timeframe)
+    else:
+        st.error("データ取得に失敗しました")
+        if 'error' in metadata:
+            with st.expander("エラー詳細"):
+                st.code(metadata['error'])
 
 
 def _render_order_panel(chart_symbol: str, order_publisher):
@@ -315,14 +344,8 @@ def _execute_order(
         logger.error(f"Order execution error: {e}", exc_info=True)
 
 
-def _render_chart(symbol: str, timeframe: str):
-    """
-    チャートのレンダリング
-    
-    Args:
-        symbol: 通貨ペア
-        timeframe: 時間足
-    """
+def _render_chart_display(df, symbol, timeframe):
+    """チャート描画"""
     try:
         fig = PriceChartComponent.render_chart(
             symbol=symbol,
@@ -336,11 +359,111 @@ def _render_chart(symbol: str, timeframe: str):
         )
     except Exception as e:
         st.error(f"チャート表示エラー: {e}")
-        st.info("チャートを読み込み中...")
         logger.error(f"Chart render error: {e}", exc_info=True)
+
+
+def _render_data_freshness(metadata: dict):
+    """
+    データ鮮度情報の表示
     
-    # チャート説明
-    st.caption("""
-    **表示要素**: ローソク足 | MA(20/75/200) | トレンドチャネル | 
-    サポート/レジスタンス | パターン認識（Pinbar/Engulfing/Breakout）
-    """)
+    Args:
+        metadata: データメタデータ
+            - data_age: データエイジ（秒）
+            - fresh: 新鮮フラグ
+            - source: データソース
+    """
+    if 'data_age' in metadata:
+        age_seconds = metadata['data_age']
+        
+        # データエイジに応じた表示
+        if age_seconds < 300:  # 5分以内
+            st.success(f"✅ 最新データ（{int(age_seconds)}秒前）")
+        elif age_seconds < 3600:  # 1時間以内
+            minutes = int(age_seconds / 60)
+            st.info(f"ℹ️ {minutes}分前のデータ")
+        elif age_seconds < 86400:  # 24時間以内
+            hours = int(age_seconds / 3600)
+            st.warning(
+                f"⚠️ {hours}時間前のデータ "
+                f"（🔄ボタンで更新推奨）"
+            )
+        else:  # 24時間以上
+            days = int(age_seconds / 86400)
+            st.error(
+                f"❌ {days}日前のデータ "
+                f"（🔄ボタンで更新してください）"
+            )
+    elif metadata.get('fresh'):
+        st.success("✅ 最新データ")
+    elif metadata.get('source'):
+        # 鮮度情報なしだが取得成功
+        source = metadata['source']
+        st.info(f"ℹ️ {source.upper()}から取得")
+
+
+def _render_data_info_sidebar(symbol: str, timeframe: str, metadata: dict):
+    """
+    データソース情報をサイドバーに表示
+    
+    Args:
+        symbol: 通貨ペア
+        timeframe: 時間足
+        metadata: データメタデータ
+    """
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### 📡 Data Info")
+        
+        # データソース表示
+        source = metadata.get('source', 'unknown')
+        emoji_map = {
+            'redis': '⚡',
+            's3': '📦',
+            'mt5': '🔌',
+            'yfinance': '🌐'
+        }
+        emoji = emoji_map.get(source, '❓')
+        
+        st.info(f"{emoji} **{source.upper()}**")
+        
+        # メトリクス表示
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if 'row_count' in metadata:
+                st.metric("Rows", f"{metadata['row_count']:,}")
+            elif 'rows' in metadata:
+                st.metric("Rows", f"{metadata['rows']:,}")
+        
+        with col2:
+            if 'response_time' in metadata:
+                st.metric("Time", f"{metadata['response_time']:.2f}s")
+        
+        # データエイジ表示
+        if 'data_age' in metadata:
+            age = int(metadata['data_age'])
+            
+            if age < 60:
+                age_str = f"{age}秒前"
+            elif age < 3600:
+                age_str = f"{age//60}分前"
+            elif age < 86400:
+                age_str = f"{age//3600}時間前"
+            else:
+                age_str = f"{age//86400}日前"
+            
+            st.caption(f"📅 Age: {age_str}")
+        
+        # キャッシュヒット表示
+        if 'cache_hit' in metadata:
+            if metadata['cache_hit']:
+                st.caption("✅ Cache Hit")
+            else:
+                st.caption("🔄 Fresh Fetch")
+        
+        # 鮮度表示
+        if 'fresh' in metadata:
+            if metadata['fresh']:
+                st.caption("🌟 Fresh Data")
+            else:
+                st.caption("⚠️ Stale Data")

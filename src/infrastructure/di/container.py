@@ -9,6 +9,7 @@ from src.infrastructure.gateways.brokers.mt5.mt5_order_executor import MT5OrderE
 from src.infrastructure.persistence.redis import RedisClient, RedisOhlcvDataRepository
 from src.domain.services.order_validation import OrderValidationService
 from src.infrastructure.gateways.messaging.sqs.order_publisher import SQSOrderPublisher
+from src.infrastructure.gateways.market_data.ohlcv_data_provider import OhlcvDataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class DIContainer:
         self._redis_client: Optional[RedisClient] = None
         self._ohlcv_cache: Optional[RedisOhlcvDataRepository] = None
         self._sqs_order_publisher: Optional[SQSOrderPublisher] = None
+        self._ohlcv_data_provider: Optional[OhlcvDataProvider] = None
     
     def get_kill_switch_repository(self) -> DynamoDBKillSwitchRepository:
         """Kill Switchリポジトリを取得（シングルトン）"""
@@ -126,6 +128,93 @@ class DIContainer:
             )
             logger.info("SQSOrderPublisher initialized")
         return self._sqs_order_publisher
+
+    def get_ohlcv_data_provider(self) -> OhlcvDataProvider:
+        """
+        OhlcvDataProviderを取得（シングルトン）
+        
+        統合データプロバイダー:
+        - Redis（キャッシュ）- オプショナル
+        - MT5（リアルタイム）- オプショナル
+        - S3（ヒストリカル）- オプショナル
+        - yfinance（フォールバック）- 必須
+        
+        Returns:
+            OhlcvDataProvider: 統合データプロバイダー
+        
+        Usage:
+            >>> container = DIContainer()
+            >>> provider = container.get_ohlcv_data_provider()
+            >>> df, meta = provider.get_data_with_freshness('USDJPY', 'H1')
+        """
+        if not self._ohlcv_data_provider:
+            # オプション: Redis（キャッシュ）
+            try:
+                ohlcv_cache = self.get_ohlcv_cache()
+                logger.info("Redis cache available")
+            except Exception as e:
+                logger.warning(f"Redis not available, continuing without cache: {e}")
+                ohlcv_cache = None
+            
+            # オプション: MT5（リアルタイム）
+            try:
+                mt5_connection = self.get_mt5_connection()
+                from src.infrastructure.gateways.brokers.mt5.mt5_data_collector import MT5DataCollector
+                mt5_collector = MT5DataCollector(
+                    connection=mt5_connection,
+                    timeframe_map=self.settings.data_collector.timeframe_map
+                )
+                logger.info("MT5 collector available")
+            except Exception as e:
+                logger.warning(f"MT5 not available: {e}")
+                mt5_collector = None
+            
+            # オプション: S3（ヒストリカル）
+            try:
+                from src.infrastructure.persistence.s3.s3_ohlcv_data_repository import S3OhlcvDataRepository
+                import boto3
+                s3_repository = S3OhlcvDataRepository(
+                    bucket_name=self.settings.data_collector.s3_raw_data_bucket,
+                    s3_client=boto3.client('s3', region_name=self.settings.aws_region)
+                )
+                logger.info("S3 repository available")
+            except Exception as e:
+                logger.warning(f"S3 not available: {e}")
+                s3_repository = None
+            
+            # 必須: yfinance（フォールバック）
+            try:
+                from src.infrastructure.gateways.market_data.yfinance_gateway import YFinanceGateway
+                yfinance_client = YFinanceGateway(cache_duration=300)
+                logger.info("yfinance client available")
+            except Exception as e:
+                logger.error(f"yfinance not available: {e}")
+                yfinance_client = None
+            
+            # 少なくとも1つのデータソースが必要
+            if not any([ohlcv_cache, mt5_collector, s3_repository, yfinance_client]):
+                raise RuntimeError(
+                    "No data sources available. "
+                    "At least yfinance should be accessible."
+                )
+            
+            # プロバイダー作成
+            self._ohlcv_data_provider = OhlcvDataProvider(
+                ohlcv_cache=ohlcv_cache,
+                mt5_data_collector=mt5_collector,
+                s3_repository=s3_repository,
+                yfinance_client=yfinance_client
+            )
+            
+            logger.info(
+                f"OhlcvDataProvider initialized "
+                f"(cache={'✓' if ohlcv_cache else '✗'}, "
+                f"mt5={'✓' if mt5_collector else '✗'}, "
+                f"s3={'✓' if s3_repository else '✗'}, "
+                f"yfinance={'✓' if yfinance_client else '✗'})"
+            )
+        
+        return self._ohlcv_data_provider
 
 # シングルトンインスタンス
 container = DIContainer()

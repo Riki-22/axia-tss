@@ -2,158 +2,173 @@
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import logging
-from typing import Optional
-import sys
-from pathlib import Path
+from typing import Tuple, Optional, Dict, Any
 
-# ロギング設定
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# プロジェクトルートをパスに追加
-project_root = Path(__file__).parent.parent.parent.parent.parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-# Market Dataクライアントのインポート
+# OhlcvDataProviderのインポート
 try:
-    from src.infrastructure.gateways.market_data.yfinance_gateway import YFinanceGateway
-    YFINANCE_AVAILABLE = True
+    from src.infrastructure.di.container import DIContainer
+    PROVIDER_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"YFinance client not available: {e}")
-    YFINANCE_AVAILABLE = False
-
-# ダミーデータジェネレーターのインポート
-from src.infrastructure.gateways.market_data.dummy_generator import DummyMarketDataGenerator
+    logger.error(f"Failed to import DIContainer: {e}")
+    PROVIDER_AVAILABLE = False
 
 
 class ChartDataSource:
-    """チャートデータ取得を担当するクラス"""
+    """
+    チャートデータ取得クラス
     
-    def __init__(self, cache_duration: int = 300):
-        """
-        Args:
-            cache_duration: キャッシュ期間（秒）
-        """
-        self.cache_duration = cache_duration
-        self.use_real_data = YFINANCE_AVAILABLE
+    責務:
+    - OhlcvDataProviderを使用した統合データ取得
+    - Streamlitキャッシュ管理
+    - データソース情報の提供
+    
+    変更点（旧実装から）:
+    - YFinanceGatewayの直接使用 → OhlcvDataProvider経由
+    - ダミーデータ生成削除 → OhlcvDataProviderのフォールバックに任せる
+    - キャッシュ戦略の簡素化
+    """
+    
+    def __init__(self):
+        """初期化"""
+        self.provider_available = PROVIDER_AVAILABLE
+        self.data_provider = None
         
-        if self.use_real_data:
-            self.data_client = YFinanceGateway(cache_duration=cache_duration)
+        if PROVIDER_AVAILABLE:
+            try:
+                container = DIContainer()
+                self.data_provider = container.get_ohlcv_data_provider()
+                logger.info("ChartDataSource initialized with OhlcvDataProvider")
+            except Exception as e:
+                logger.error(f"Failed to initialize OhlcvDataProvider: {e}")
+                self.data_provider = None
         else:
-            self.data_client = None
-            logger.info("Using dummy data mode (YFinance not available)")
+            logger.warning("DIContainer not available, ChartDataSource in fallback mode")
     
-    @st.cache_data(ttl=300)
-    def fetch_market_data(symbol: str, timeframe: str, period: str = '1mo', use_real: bool = True) -> pd.DataFrame:
+    def get_ohlcv_data(
+        self,
+        symbol: str,
+        timeframe: str,
+        period_days: int = 30
+    ) -> Tuple[Optional[pd.DataFrame], Dict[str, Any]]:
         """
-        市場データ取得（静的メソッド、Streamlitキャッシュ付き）
+        OHLCVデータを取得（Streamlitキャッシュ付き）
         
         Args:
             symbol: 通貨ペア
-            timeframe: 時間枠
-            period: 取得期間
-            use_real: 実データ使用フラグ
+            timeframe: 時間足
+            period_days: 取得日数
         
         Returns:
-            pd.DataFrame: OHLCVデータ
+            Tuple[DataFrame, metadata]:
+                DataFrame: OHLCVデータ（失敗時None）
+                metadata: {
+                    'source': str,
+                    'cache_hit': bool,
+                    'data_age': float,
+                    'fresh': bool,
+                    'response_time': float,
+                    'row_count': int
+                }
         """
-        if use_real and YFINANCE_AVAILABLE:
-            try:
-                client = YFinanceGateway(cache_duration=300)
-                df = client.fetch_ohlcv(symbol, timeframe, period=period)
-                
-                if not df.empty:
-                    logger.info(f"実データ取得成功: {symbol} {timeframe} - {len(df)}件")
-                    return df
-                else:
-                    logger.warning(f"データ取得失敗、ダミーデータを使用: {symbol}")
-                    return ChartDataSource.generate_dummy_data(30, timeframe)
-                    
-            except Exception as e:
-                logger.error(f"データ取得エラー: {e}")
-                return ChartDataSource.generate_dummy_data(30, timeframe)
-        else:
-            return ChartDataSource.generate_dummy_data(30, timeframe)
+        if not self.data_provider:
+            return None, {
+                'error': 'Data provider not available',
+                'source': 'none'
+            }
+        
+        try:
+            # OhlcvDataProviderから取得（鮮度チェック付き）
+            df, metadata = self.data_provider.get_data_with_freshness(
+                symbol=symbol,
+                timeframe=timeframe,
+                period_days=period_days,
+                use_case='chart'
+            )
+            
+            if df is None or df.empty:
+                logger.warning(
+                    f"No data available: {symbol} {timeframe}"
+                )
+                return None, metadata
+            
+            logger.info(
+                f"Data loaded: {symbol} {timeframe}, "
+                f"source={metadata.get('source')}, "
+                f"rows={len(df)}, "
+                f"fresh={metadata.get('fresh')}"
+            )
+            
+            return df, metadata
+            
+        except Exception as e:
+            logger.error(f"Error fetching data: {e}", exc_info=True)
+            return None, {'error': str(e)}
     
-    def fetch_data(self, symbol: str, timeframe: str, days: int = 30) -> pd.DataFrame:
+    def force_refresh(
+        self,
+        symbol: str,
+        timeframe: str,
+        period_days: int = 30
+    ) -> Tuple[Optional[pd.DataFrame], Dict[str, Any]]:
         """
-        インスタンスメソッドとしてのデータ取得
+        キャッシュをクリアして強制的に最新データを取得
+        
+        処理フロー:
+        1. Streamlitキャッシュをクリア
+        2. force_source='mt5'でMT5から強制取得
+        3. 取得データは自動的にRedisにキャッシュされる
         
         Args:
             symbol: 通貨ペア
-            timeframe: 時間枠
-            days: 表示日数
+            timeframe: 時間足
+            period_days: 取得日数
         
         Returns:
-            pd.DataFrame: OHLCVデータ
+            Tuple[DataFrame, metadata]
         """
-        period = self.get_period_string(days)
+        if not self.data_provider:
+            return None, {
+                'error': 'Data provider not available',
+                'source': 'none'
+            }
         
-        if self.use_real_data and self.data_client:
-            try:
-                df = self.data_client.fetch_ohlcv(symbol, timeframe, period=period)
-                
-                if not df.empty:
-                    logger.info(f"実データ取得成功: {symbol} {timeframe} - {len(df)}件")
-                    return df
-                else:
-                    logger.warning(f"データ取得失敗、ダミーデータを使用: {symbol}")
-                    return self.generate_dummy_data(days, timeframe)
-                    
-            except Exception as e:
-                logger.error(f"データ取得エラー: {e}")
-                return self.generate_dummy_data(days, timeframe)
-        else:
-            return self.generate_dummy_data(days, timeframe)
-    
-    @staticmethod
-    def get_period_string(days: int) -> str:
-        """
-        日数をYFinanceの期間文字列に変換
-        
-        Args:
-            days: 日数
-        
-        Returns:
-            str: 期間文字列（例: '1mo', '3mo'）
-        """
-        period_map = {
-            7: '7d',
-            14: '2wk',
-            30: '1mo',
-            60: '3mo',
-            180: '6mo',
-            365: '1y'
-        }
-        
-        # 最も近い期間を選択
-        for d in sorted(period_map.keys()):
-            if days <= d:
-                return period_map[d]
-        return '1y'
-    
-    @staticmethod
-    def generate_dummy_data(days: int, timeframe: str = 'H1') -> pd.DataFrame:
-        """
-        ダミーデータ生成（フォールバック用）
-        
-        Args:
-            days: 生成する日数
-            timeframe: 時間枠
-        
-        Returns:
-            pd.DataFrame: ダミーのOHLCVデータ
-        """
-        generator = DummyMarketDataGenerator(seed=42)
-        return generator.generate_ohlcv(
-            days=days,
-            timeframe=timeframe,
-            base_price=150.0,
-            volatility=0.5,
-            trend=0.0
-        )
+        try:
+            logger.info(
+                f"Force refresh requested: {symbol} {timeframe}"
+            )
+            
+            # Streamlitキャッシュをクリア
+            st.cache_data.clear()
+            
+            # MT5から強制取得
+            df, metadata = self.data_provider.get_data_with_freshness(
+                symbol=symbol,
+                timeframe=timeframe,
+                period_days=period_days,
+                use_case='chart',
+                force_source='mt5'  # ★MT5から強制取得
+            )
+            
+            if df is None or df.empty:
+                logger.warning(
+                    f"Force refresh failed: {symbol} {timeframe}"
+                )
+                return None, metadata
+            
+            logger.info(
+                f"Force refresh success: {symbol} {timeframe}, "
+                f"source={metadata.get('source')}, "
+                f"rows={len(df)}"
+            )
+            
+            return df, metadata
+            
+        except Exception as e:
+            logger.error(f"Error in force_refresh: {e}", exc_info=True)
+            return None, {'error': str(e)}
     
     def get_data_source_info(self) -> str:
         """
@@ -162,19 +177,24 @@ class ChartDataSource:
         Returns:
             str: データソース名
         """
-        if self.use_real_data and YFINANCE_AVAILABLE:
-            return "Yahoo Finance"
+        if self.data_provider:
+            return "OhlcvDataProvider (Redis/MT5/S3/yfinance)"
         else:
-            return "Dummy Data"
+            return "Not Available"
     
-    def is_real_data_available(self) -> bool:
+    def is_available(self) -> bool:
         """
-        実データが利用可能かチェック
+        データプロバイダーが利用可能かチェック
         
         Returns:
             bool: 利用可能な場合True
         """
-        return self.use_real_data and YFINANCE_AVAILABLE
+        return self.data_provider is not None
+
+
+# ========================================
+# シングルトン取得関数
+# ========================================
 
 @st.cache_resource
 def get_chart_data_source() -> ChartDataSource:
@@ -190,7 +210,34 @@ def get_chart_data_source() -> ChartDataSource:
     Usage:
         >>> from chart_data_source import get_chart_data_source
         >>> data_source = get_chart_data_source()
-        >>> df = data_source.fetch_data('USDJPY', 'H1', days=30)
+        >>> df, meta = data_source.get_ohlcv_data('USDJPY', 'H1', days=30)
     """
     logger.info("Initializing ChartDataSource singleton")
-    return ChartDataSource(cache_duration=300)
+    return ChartDataSource()
+
+
+# ========================================
+# 後方互換性のための関数（既存コードをサポート）
+# ========================================
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_market_data(
+    symbol: str,
+    timeframe: str,
+    period_days: int = 30
+) -> Tuple[Optional[pd.DataFrame], Dict[str, Any]]:
+    """
+    市場データ取得（後方互換性のための関数）
+    
+    注意: 新しいコードではget_chart_data_source().get_ohlcv_data()を使用してください
+    
+    Args:
+        symbol: 通貨ペア
+        timeframe: 時間足
+        period_days: 取得日数
+    
+    Returns:
+        Tuple[DataFrame, metadata]
+    """
+    data_source = get_chart_data_source()
+    return data_source.get_ohlcv_data(symbol, timeframe, period_days)
