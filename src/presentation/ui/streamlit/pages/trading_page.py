@@ -354,10 +354,7 @@ def _render_chart_display(df, symbol, timeframe, days):
         days: 表示日数
     """
     try:
-        # DataFrameを直接使ってチャート描画
-        # （PriceChartComponentがDataFrameを受け取れる場合）
-        fig = PriceChartComponent.render_chart_from_df(
-            df=df,
+        fig = PriceChartComponent.render_chart(
             symbol=symbol,
             timeframe=timeframe,
             days=days
