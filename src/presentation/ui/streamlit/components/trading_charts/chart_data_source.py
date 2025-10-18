@@ -175,3 +175,22 @@ class ChartDataSource:
             bool: 利用可能な場合True
         """
         return self.use_real_data and YFINANCE_AVAILABLE
+
+@st.cache_resource
+def get_chart_data_source() -> ChartDataSource:
+    """
+    ChartDataSourceのシングルトンインスタンスを取得
+    
+    この関数はStreamlitの@cache_resourceデコレータにより、
+    アプリケーション全体で1つのインスタンスのみが生成される。
+    
+    Returns:
+        ChartDataSource: チャートデータソースインスタンス
+    
+    Usage:
+        >>> from chart_data_source import get_chart_data_source
+        >>> data_source = get_chart_data_source()
+        >>> df = data_source.fetch_data('USDJPY', 'H1', days=30)
+    """
+    logger.info("Initializing ChartDataSource singleton")
+    return ChartDataSource(cache_duration=300)

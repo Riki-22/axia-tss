@@ -373,6 +373,7 @@ class ChartRenderer:
         colors = [self.default_colors['candlestick_up'] if row['close'] >= row['open'] 
                  else self.default_colors['candlestick_down']
                  for _, row in df.iterrows()]
+        
         if df['volume'].sum() == 0:
             # 価格変動率（ボラティリティ）を代替表示
             price_changes = df['close'].pct_change().abs() * 100
@@ -387,20 +388,26 @@ class ChartRenderer:
                 ),
                 row=2, col=1
             )
-
-        fig.add_trace(
-            go.Bar(
-                x=df.index,
-                y=df['volume'],
-                name='Volume',
-                marker_color=colors,
-                showlegend=False
-            ),
-            row=2, col=1
-        )
+        else:
+            fig.add_trace(
+                go.Bar(
+                    x=df.index,
+                    y=df['volume'],
+                    name='Volume',
+                    marker_color=colors,
+                    showlegend=False
+                ),
+                row=2, col=1
+            )
     
     def _configure_layout(self, fig: go.Figure):
-        """レイアウト設定"""
+        """
+        レイアウト設定
+        
+        変更点:
+        - X軸の範囲選択ボタンを削除（UIで期間選択するため）
+        - ズーム・パン機能は維持
+        """
         fig.update_layout(
             template='plotly_dark',
             height=700,
@@ -415,18 +422,9 @@ class ChartRenderer:
             xaxis_rangeslider_visible=False
         )
         
-        # X軸の範囲選択ボタン
+        # X軸設定（範囲選択ボタンなし）
         fig.update_xaxes(
             rangeslider_visible=False,
-            rangeselector=dict(
-                buttons=list([
-                    dict(count=1, label="1D", step="day", stepmode="backward"),
-                    dict(count=7, label="1W", step="day", stepmode="backward"),
-                    dict(count=1, label="1M", step="month", stepmode="backward"),
-                    dict(count=3, label="3M", step="month", stepmode="backward"),
-                    dict(step="all", label="ALL")
-                ])
-            ),
             type="date",
             row=1, col=1
         )

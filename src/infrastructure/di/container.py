@@ -8,6 +8,7 @@ from src.infrastructure.gateways.brokers.mt5.mt5_connection import MT5Connection
 from src.infrastructure.gateways.brokers.mt5.mt5_order_executor import MT5OrderExecutor
 from src.infrastructure.persistence.redis import RedisClient, RedisOhlcvDataRepository
 from src.domain.services.order_validation import OrderValidationService
+from src.infrastructure.gateways.messaging.sqs.order_publisher import SQSOrderPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class DIContainer:
         self._kill_switch_repository: Optional[DynamoDBKillSwitchRepository] = None
         self._redis_client: Optional[RedisClient] = None
         self._ohlcv_cache: Optional[RedisOhlcvDataRepository] = None
+        self._sqs_order_publisher: Optional[SQSOrderPublisher] = None
     
     def get_kill_switch_repository(self) -> DynamoDBKillSwitchRepository:
         """Kill Switchリポジトリを取得（シングルトン）"""
@@ -104,6 +106,26 @@ class DIContainer:
             )
             logger.info("RedisOhlcvDataRepository initialized via DIContainer")
         return self._ohlcv_cache
+
+    def get_sqs_order_publisher(self) -> SQSOrderPublisher:
+        """
+        SQS注文送信クラスを取得（シングルトン）
+        
+        Returns:
+            SQSOrderPublisher: SQS注文パブリッシャーインスタンス
+        
+        Usage:
+            >>> container = DIContainer()
+            >>> publisher = container.get_sqs_order_publisher()
+            >>> success, msg_id = publisher.send_order(order_data)
+        """
+        if not self._sqs_order_publisher:
+            self._sqs_order_publisher = SQSOrderPublisher(
+                queue_url=self.settings.queue_url,
+                sqs_client=self.settings.sqs_client
+            )
+            logger.info("SQSOrderPublisher initialized")
+        return self._sqs_order_publisher
 
 # シングルトンインスタンス
 container = DIContainer()
