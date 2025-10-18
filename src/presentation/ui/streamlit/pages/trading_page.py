@@ -54,17 +54,16 @@ def render_trading_page():
                 )
             if df is not None:
                 st.success("✅ 最新データを取得しました")
-                st.rerun()
+                st.rerun()  # 画面を再描画
             else:
                 st.error("❌ データ取得に失敗しました")
                 if 'error' in metadata:
                     st.caption(f"エラー: {metadata['error']}")
     
-    # 注文パネル（order_publisherがある場合のみ）
-    if order_publisher:
-        _render_order_panel(chart_symbol, order_publisher)
+    # 注文パネル
+    _render_order_panel(chart_symbol, order_publisher)
     
-    # データ取得 + 鮮度表示
+    # データ取得
     with st.spinner('Loading chart...'):
         df, metadata = data_source.get_ohlcv_data(
             chart_symbol, chart_timeframe, days
@@ -78,7 +77,7 @@ def render_trading_page():
         _render_data_info_sidebar(chart_symbol, chart_timeframe, metadata)
         
         # チャート描画
-        _render_chart_display(df, chart_symbol, chart_timeframe)
+        _render_chart_display(df, chart_symbol, chart_timeframe, days)
     else:
         st.error("データ取得に失敗しました")
         if 'error' in metadata:
@@ -344,13 +343,24 @@ def _execute_order(
         logger.error(f"Order execution error: {e}", exc_info=True)
 
 
-def _render_chart_display(df, symbol, timeframe):
-    """チャート描画"""
+def _render_chart_display(df, symbol, timeframe, days):
+    """
+    チャート描画
+    
+    Args:
+        df: OHLCVデータ（既に取得済み）
+        symbol: 通貨ペア
+        timeframe: 時間足
+        days: 表示日数
+    """
     try:
-        fig = PriceChartComponent.render_chart(
+        # DataFrameを直接使ってチャート描画
+        # （PriceChartComponentがDataFrameを受け取れる場合）
+        fig = PriceChartComponent.render_chart_from_df(
+            df=df,
             symbol=symbol,
             timeframe=timeframe,
-            days=30
+            days=days
         )
         st.plotly_chart(
             fig,
