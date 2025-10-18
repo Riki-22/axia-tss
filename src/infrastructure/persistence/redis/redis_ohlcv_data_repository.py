@@ -428,7 +428,7 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
             
             # インデックスがDatetimeIndexであることを確認
             if not isinstance(df.index, pd.DatetimeIndex):
-                logger.warning(
+                logger.info(
                     f"Index is not DatetimeIndex for {symbol} {timeframe}, "
                     f"attempting to convert..."
                 )
