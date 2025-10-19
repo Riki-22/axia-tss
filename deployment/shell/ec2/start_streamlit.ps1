@@ -82,6 +82,10 @@ try {
     Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executing Streamlit startup command"
     Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executable: $STREAMLIT_EXE"
     
+    # Set PYTHONPATH (CRITICAL for module imports)
+    $env:PYTHONPATH = $PROJECT_ROOT
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] PYTHONPATH: $env:PYTHONPATH"
+    
     # Start Streamlit as background process
     $process = Start-Process -FilePath $STREAMLIT_EXE `
         -ArgumentList "run", "src\presentation\ui\streamlit\app.py", "--server.port", "8501", "--server.headless", "true" `

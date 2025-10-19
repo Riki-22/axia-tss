@@ -76,6 +76,10 @@ try {
     Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executing Order Manager startup command"
     Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executable: $PYTHON_EXE"
     
+    # Set PYTHONPATH (CRITICAL for module imports)
+    $env:PYTHONPATH = $PROJECT_ROOT
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] PYTHONPATH: $env:PYTHONPATH"
+
     $process = Start-Process -FilePath $PYTHON_EXE `
         -ArgumentList "src\presentation\cli\run_order_processor.py" `
         -WorkingDirectory $PROJECT_ROOT `

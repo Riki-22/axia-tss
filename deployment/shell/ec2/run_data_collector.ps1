@@ -76,6 +76,10 @@ try {
     Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Data Collector execution started"
     Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executable: $PYTHON_EXE"
     
+    # Set PYTHONPATH (CRITICAL for module imports)
+    $env:PYTHONPATH = $PROJECT_ROOT
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] PYTHONPATH: $env:PYTHONPATH"
+
     # Synchronous execution (wait for completion)
     $output = & $PYTHON_EXE src\presentation\cli\run_data_collector.py 2>&1
     $exitCode = $LASTEXITCODE
