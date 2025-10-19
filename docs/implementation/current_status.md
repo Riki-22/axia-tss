@@ -235,6 +235,8 @@ pie title 実装完了率
 
 | ファイル | 行数 | 実装日 | 主要機能 | テスト状況 |
 |---------|------|-------|---------|-----------|
+| **mt5_price_provider.py** | 290行 | 10/19 | リアルタイム価格取得（Bid/Ask/スプレッド） | ✅ EC2実機テスト済み |
+| **mt5_account_provider.py** | 320行 | 10/19 | 口座情報・本日損益（NYクローズ基準） | ✅ EC2実機テスト済み |
 | **order_publisher.py** | 207行 | 10/17 | SQS注文送信・バリデーション | ✅ テスト済み |
 | **process_sqs_order.py** | 86行 | 10/17 | SQS注文処理・MT5実行 | ✅ テスト済み |
 | **collect_ohlcv_data.py** | 326行 | 10/15 | 日次データ収集 | ✅ テスト済み |
@@ -242,8 +244,11 @@ pie title 実装完了率
 | **ohlcv_data_provider.py** | 380行 | 10/15 | 統合データプロバイダー | ✅ テスト済み |
 | **dynamodb_kill_switch_repository.py** | 156行 | 10/16 | Kill Switch永続化 | ✅ テスト済み |
 | **mt5_connection.py** | 134行 | 10/14 | MT5接続管理 | ✅ テスト済み |
-| **container.py** | 220行 | 10/18 | 依存性注入コンテナ | ✅ テスト済み |
-| **trading_page.py** | 420行 | 10/18 | 手動注文UI | ✅ 動作確認済み |
+| **mt5_data_collector.py** | 290行 | 10/15 | OHLCVデータ収集 | ✅ テスト済み |
+| **mt5_order_executor.py** | 280行 | 10/14 | 注文実行 | ✅ テスト済み |
+| **container.py** | 265行 | 10/19 | 依存性注入コンテナ（Provider追加） | ✅ テスト済み |
+| **trading_page.py** | 470行 | 10/19 | 手動注文UI（現在価格ベース） | ✅ 動作確認済み |
+| **header.py** | 110行 | 10/19 | リアルタイムメトリクス表示 | ✅ 動作確認済み |
 | **connection_checkers.py** | 290行 | 10/16 | ヘルスチェック機能 | ✅ テスト済み |
 
 ### 4.2 部分実装ファイル（🔄 80-95%）
@@ -253,15 +258,12 @@ pie title 実装完了率
 | **chart_data_source.py** | 90% | リアルタイム更新最適化 | Week 4 |
 | **system_controller.py** | 85% | カスタムメトリクス送信 | Week 4 |
 | **s3_ohlcv_data_repository.py** | 80% | 読み取り機能（設計完了） | Week 4 |
-| **header.py** | 75% | MT5口座情報表示 | Week 3-4 |
 
 ### 4.3 未実装ファイル（❌ 0%）
 
 | ファイル | 実装予定時期 | 依存関係 | 優先度 |
 |---------|-------------|---------|--------|
-| **mt5_price_service.py** | Week 3 | mt5_connection.py | High |
-| **mt5_account_service.py** | Week 3 | mt5_connection.py | High |
-| **mt5_position_service.py** | Week 4 | mt5_connection.py | High |
+| **mt5_position_provider.py** | Week 4（10/22） | mt5_connection.py | High |
 | **position.py** (Entity) | Week 4 | MT5 Services | High |
 | **signal.py** (Entity) | Phase 3 | TechnicalIndicators | Medium |
 

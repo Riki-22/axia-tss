@@ -17,6 +17,7 @@
 - [6. イベント駆動アーキテクチャ](#6-イベント駆動アーキテクチャ)
 - [7. エラーハンドリングパターン](#7-エラーハンドリングパターン)
 - [8. 設計原則](#8-設計原則)
+- [9. 命名規則](#9-命名規則)
 
 ---
 
@@ -805,6 +806,33 @@ class OhlcvDataProvider:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return dict(zip(symbols, results))
 ```
+
+---
+
+## 9. 命名規則
+
+### 9.1 Infrastructure層のSuffix規則
+
+AXIAでは、Infrastructure層のクラス命名に以下のSuffixルールを適用します。
+
+| Suffix | 責務 | 使用例 | 該当ファイル |
+|--------|------|--------|-------------|
+| **Repository** | データ永続化 | `DynamoDBKillSwitchRepository`<br/>`DynamoDBOrderRepository`<br/>`RedisOhlcvDataRepository` | `src/infrastructure/persistence/dynamodb/`<br/>`src/infrastructure/persistence/redis/` |
+| **Provider** | データ提供 | `OhlcvDataProvider`<br/>`MT5PriceProvider`<br/>`MT5AccountProvider` | `src/infrastructure/gateways/market_data/`<br/>`src/infrastructure/gateways/brokers/mt5/` |
+| **Gateway** | 外部API統合 | `YFinanceGateway` | `src/infrastructure/gateways/market_data/` |
+| **Client** | 接続管理 | `RedisClient` | `src/infrastructure/persistence/redis/` |
+| **Connection** | 接続管理（専用） | `MT5Connection` | `src/infrastructure/gateways/brokers/mt5/` |
+| **Executor** | 実行処理 | `MT5OrderExecutor` | `src/infrastructure/gateways/brokers/mt5/` |
+| **Collector** | データ収集 | `MT5DataCollector` | `src/infrastructure/gateways/brokers/mt5/` |
+| **Publisher** | メッセージ送信 | `SQSOrderPublisher` | `src/infrastructure/gateways/messaging/sqs/` |
+| **Listener** | メッセージ受信 | `SQSQueueListener` | `src/infrastructure/gateways/messaging/sqs/` |
+
+### 9.2 Domain層のSuffix規則
+
+| Suffix | 責務 | 使用例 | 該当ファイル |
+|--------|------|--------|-------------|
+| **Service** | ドメインロジック | `OrderValidationService` | `src/domain/services/` |
+| **Entity** | エンティティ | `Order` | `src/domain/entities/` |
 
 ---
 

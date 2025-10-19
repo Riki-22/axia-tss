@@ -208,7 +208,10 @@ src/
     │   ├── brokers/mt5/
     │   │   ├── mt5_connection.py          # → infrastructure.md
     │   │   ├── mt5_data_collector.py      # → data_model.md
-    │   │   └── mt5_order_executor.py      # → functional_design.md
+    │   │   ├── mt5_order_executor.py      # → functional_design.md
+    │   │   ├── mt5_price_provider.py      # 価格情報提供（リアルタイム）
+    │   │   ├── mt5_account_provider.py    # 口座情報提供
+    │   │   └── mt5_position_provider.py   # ポジション情報提供 → 実装予定
     │   ├── market_data/
     │   │   ├── dummy_generator.py         # テスト用ダミーデータ
     │   │   ├── ohlcv_data_provider.py     # → data_model.md
@@ -232,6 +235,22 @@ src/
         └── lambda/
             └── alert_ingestion.py         # Lambdaアラート処理
 ```
+
+**命名規則**: 
+- `*_connection.py`: 接続管理の責務（Connection suffix）
+- `*_executor.py`: 実行処理の責務（Executor suffix）
+- `*_collector.py`: データ収集の責務（Collector suffix）
+- `*_provider.py`: データ提供の責務（Provider suffix）
+
+詳細は [architecture_patterns.md - Section 9: 命名規則](logical_design/architecture_patterns.md#9-命名規則) を参照。
+
+**実装状況**:
+- ✅ **Connection**: MT5接続管理（実装済み）
+- ✅ **Executor**: 注文実行（実装済み）
+- ✅ **Collector**: OHLCVデータ収集（実装済み）
+- ✅ **Provider (Price)**: 価格情報提供（実装完了）
+- ✅ **Provider (Account)**: 口座情報提供（実装完了）
+- ⏳ **Provider (Position)**: ポジション管理（実装予定）
 
 ### 3.3 テスト・デプロイメント構造（実際の構造）
 
