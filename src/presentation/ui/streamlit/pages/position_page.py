@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def render_position_page():
     """ポジション管理ページのレンダリング"""
-    st.markdown("## 💹 ポジション管理")
+    st.markdown("#### 💹 ポジション管理")
     
     # MT5PositionProviderとMT5AccountProviderを取得
     try:
