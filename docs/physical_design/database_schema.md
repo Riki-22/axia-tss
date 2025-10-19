@@ -83,17 +83,31 @@ graph TB
 **テーブル名**: `TSS_DynamoDB_OrderState`  
 **設計思想**: Single Table Design + 汎用プライマリキー
 
-```mermaid
-erDiagram
-    TSS_DynamoDB_OrderState {
-        string pk PK "パーティションキー"
-        string sk SK "ソートキー" 
-        string item_type "エンティティタイプ"
-        number version "楽観的ロック"
-        datetime last_updated_utc "最終更新時刻"
-        datetime created_utc "作成時刻"
-        number ttl "TTL（オプション）"
-    }
+```yaml
+Table: TSS_DynamoDB_OrderState
+Billing Mode: ON_DEMAND
+Point In Time Recovery: ENABLED
+
+Primary Key:
+  PartitionKey: pk (String)
+  SortKey: sk (String)
+
+Global Secondary Index:
+  GSI1:
+    PartitionKey: gs1pk (String) 
+    SortKey: gs1sk (String)
+    ProjectionType: INCLUDE
+    
+Attributes:
+  - pk: パーティションキー（例: ORDER#{id}, POSITION#{id}）
+  - sk: ソートキー（例: METADATA）
+  - item_type: エンティティタイプ（Order, Position, GlobalSetting）
+  - version: 楽観的ロック用バージョン番号
+  - last_updated_utc: 最終更新時刻
+  - created_utc: 作成時刻
+  - ttl: TTL（オプション）
+  - gs1pk: GSI1パーティションキー（スパース）
+  - gs1sk: GSI1ソートキー（スパース）
 ```
 
 ### 2.2 プライマリキー設計（実装済み）
@@ -186,21 +200,41 @@ Access Patterns:
 - Update Position: UpdateItem + ConditionExpression(version check)
 ```
 
-### 2.4 GSI設計（将来実装）
+### 2.4 GSI1設計（実装済み - ADR-005）
+
+**実装状況**: ✅ 作成済み（`deployment/shell/dynamodb/create_gsi1.sh`）
 
 ```yaml
-GlobalSecondaryIndexes:
-  GSI1-SymbolStatus:
-    PartitionKey: gs1pk  # SYMBOL#{symbol}
-    SortKey: gs1sk      # STATUS#{status}#{timestamp}
-    ProjectionType: INCLUDE
-    NonKeyAttributes: 
-      - position_id, volume, entry_price, current_price, unrealized_pnl
+GSI1: オープンポジション高速取得用
+  Purpose: アクティブポジション一覧の高速取得
+  IndexName: GSI1
+  
+  KeySchema:
+    PartitionKey: gs1pk (String)  # 固定値 "OPEN_POSITIONS"
+    SortKey: gs1sk (String)       # "SYMBOL#{symbol}#{timestamp}"
     
-  GSI2-StatusDate:  
-    PartitionKey: gs2pk  # STATUS#{status}
-    SortKey: gs2sk      # DATE#{date}#{position_id}
-    ProjectionType: KEYS_ONLY
+  ProjectionType: INCLUDE
+  NonKeyAttributes:
+    - position_id      # ポジション識別子
+    - symbol          # 通貨ペア
+    - side            # BUY/SELL
+    - status          # OPEN/CLOSED（スパース条件）
+    - size            # ロットサイズ
+    - entry_price     # エントリー価格
+    - stop_loss       # ストップロス
+    - take_profit     # テイクプロフィット
+    - current_price   # 現在価格
+    - unrealized_pnl  # 含み損益
+    - created_utc     # 作成日時
+
+Sparse Index Design（スパースインデックス）:
+  - OPENステータスのポジションのみインデックス化
+  - CLOSEDポジションはgs1pk/gs1sk属性を削除してインデックスから除外
+  - ストレージコスト最適化
+
+Access Patterns:
+  - 全オープンポジション: Query(gs1pk="OPEN_POSITIONS")
+  - シンボル別オープンポジション: Query(gs1pk="OPEN_POSITIONS", begins_with(gs1sk, "SYMBOL#USDJPY"))
 ```
 
 ### 2.5 データ整合性制御（実装済み）
