@@ -8,6 +8,7 @@ from src.infrastructure.gateways.brokers.mt5.mt5_connection import MT5Connection
 from src.infrastructure.gateways.brokers.mt5.mt5_order_executor import MT5OrderExecutor
 from src.infrastructure.gateways.brokers.mt5.mt5_price_provider import MT5PriceProvider
 from src.infrastructure.gateways.brokers.mt5.mt5_account_provider import MT5AccountProvider
+from src.infrastructure.gateways.brokers.mt5.mt5_position_provider import MT5PositionProvider
 from src.infrastructure.persistence.redis import RedisClient, RedisOhlcvDataRepository
 from src.domain.services.order_validation import OrderValidationService
 from src.infrastructure.gateways.messaging.sqs.order_publisher import SQSOrderPublisher
@@ -29,6 +30,7 @@ class DIContainer:
         self._ohlcv_data_provider: Optional[OhlcvDataProvider] = None
         self._mt5_price_provider: Optional[MT5PriceProvider] = None
         self._mt5_account_provider: Optional[MT5AccountProvider] = None
+        self._mt5_position_provider: Optional[MT5PositionProvider] = None
     
     def get_kill_switch_repository(self) -> DynamoDBKillSwitchRepository:
         """Kill Switchリポジトリを取得（シングルトン）"""
@@ -272,6 +274,34 @@ class DIContainer:
             )
             logger.info("MT5AccountProvider initialized")
         return self._mt5_account_provider
+    
+    def get_mt5_position_provider(self) -> MT5PositionProvider:
+        """
+        MT5ポジション管理プロバイダーを取得（シングルトン）
+        
+        リアルタイムポジション情報（一覧/決済/損益計算）を提供する
+        
+        Returns:
+            MT5PositionProvider: MT5ポジション情報プロバイダー
+        
+        Usage:
+            >>> container = DIContainer()
+            >>> position_provider = container.get_mt5_position_provider()
+            >>> positions = position_provider.get_all_positions()
+            >>> success, error = position_provider.close_position(12345678)
+        
+        Note:
+            - 命名規則: Provider suffix（データ提供の責務）
+            - MT5をSingle Source of Truthとする
+            - DynamoDB記録は Phase 2で実装
+            - Day 4実装（2025-10-19）
+        """
+        if not self._mt5_position_provider:
+            self._mt5_position_provider = MT5PositionProvider(
+                connection=self.get_mt5_connection()
+            )
+            logger.info("MT5PositionProvider initialized")
+        return self._mt5_position_provider
 
 # シングルトンインスタンス
 container = DIContainer()
