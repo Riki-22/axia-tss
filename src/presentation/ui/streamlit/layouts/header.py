@@ -71,25 +71,34 @@ def render_header_metrics():
         if account_info:
             margin_level = account_info['margin_level']
             
-            # ステータス判定
-            if margin_level >= 300:
-                status = "安全"
-                status_color = "normal"
-            elif margin_level >= 200:
-                status = "注意"
-                status_color = "normal"
-            elif margin_level >= 100:
-                status = "警告"
-                status_color = "inverse"
+            # ポジションなし（margin=0）の場合
+            if margin_level == float('inf') or margin_level == 0:
+                st.metric(
+                    "証拠金率",
+                    "---",
+                    "ポジションなし",
+                    delta_color="off"
+                )
             else:
-                status = "危険"
-                status_color = "inverse"
-            
-            st.metric(
-                "証拠金率",
-                f"{margin_level:.0f}%",
-                status,
-                delta_color=status_color
-            )
+                # ステータス判定
+                if margin_level >= 300:
+                    status = "安全"
+                    status_color = "normal"
+                elif margin_level >= 200:
+                    status = "注意"
+                    status_color = "normal"
+                elif margin_level >= 100:
+                    status = "警告"
+                    status_color = "inverse"
+                else:
+                    status = "危険"
+                    status_color = "inverse"
+                
+                st.metric(
+                    "証拠金率",
+                    f"{margin_level:.0f}%",
+                    status,
+                    delta_color=status_color
+                )
         else:
             st.metric("証拠金率", "取得中...", None)
