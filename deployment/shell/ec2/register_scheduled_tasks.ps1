@@ -146,8 +146,8 @@ $action4 = New-ScheduledTaskAction `
     -Argument "-ExecutionPolicy Bypass -NoProfile -File `"$SCRIPT_DIR\run_data_collector.ps1`"" `
     -WorkingDirectory $PROJECT_ROOT
 
-# Execute daily at 07:00 JST
-$trigger4 = New-ScheduledTaskTrigger -Daily -At "07:00"
+# Execute weekdays only (Monday-Friday) at 07:00 JST
+$trigger4 = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At "07:00"
 
 $principal4 = New-ScheduledTaskPrincipal `
     -UserId "SYSTEM" `
@@ -166,9 +166,9 @@ Register-ScheduledTask `
     -Trigger $trigger4 `
     -Principal $principal4 `
     -Settings $settings4 `
-    -Description "AXIA Daily Data Collection (07:00 JST)" | Out-Null
+    -Description "AXIA Weekday Data Collection (Mon-Fri 07:00 JST)" | Out-Null
 
-Write-Host "OK AXIA_Data_Collector registered" -ForegroundColor Green
+Write-Host "OK AXIA_Data_Collector registered (Weekdays only)" -ForegroundColor Green
 
 # ========================================
 # Verify registration
