@@ -1,25 +1,31 @@
 # ================================================================
-# AXIA Data Collector 実行スクリプト
-# ================================================================
-# 用途: 日次データ収集（OHLCV）を実行
-# タスクスケジューラ: 毎日 07:00 JST に実行
+# AXIA Data Collector Execution Script
 # ================================================================
 
-# 環境変数
+# Environment variables
 $PROJECT_ROOT = "C:\Users\Administrator\Projects\axia-tss"
-$CONDA_ENV_PATH = "C:\ProgramData\miniconda3\envs\axia-env"
+$CONDA_ROOT = "C:\ProgramData\miniconda3"
+$CONDA_ENV = "axia-env"
+$CONDA_ENV_PATH = "$CONDA_ROOT\envs\$CONDA_ENV"
 $PYTHON_EXE = "$CONDA_ENV_PATH\python.exe"
 $LOG_DIR = "C:\Users\Administrator\axia-logs"
 $LOG_FILE = "$LOG_DIR\data_collector.log"
 $MAX_LOG_SIZE = 10MB
 $MAX_LOG_GENERATIONS = 5
 
-# ログディレクトリ作成
+# Initialize Conda (CRITICAL for Task Scheduler)
+$env:Path = "$CONDA_ROOT;$CONDA_ROOT\Scripts;$CONDA_ROOT\Library\bin;$CONDA_ENV_PATH;$CONDA_ENV_PATH\Scripts;$env:Path"
+$CONDA_HOOK = "$CONDA_ROOT\shell\condabin\conda-hook.ps1"
+if (Test-Path $CONDA_HOOK) {
+    . $CONDA_HOOK
+}
+
+# Log directory creation
 if (-not (Test-Path $LOG_DIR)) {
     New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null
 }
 
-# ログローテーション関数
+# Log rotation function
 function Rotate-Log {
     param([string]$LogPath)
     
@@ -37,69 +43,69 @@ function Rotate-Log {
                 }
             }
             Move-Item $LogPath "$LogPath.1" -Force
-            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ログローテーション完了: $LogPath" -ForegroundColor Yellow
+            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log rotation completed: $LogPath" -ForegroundColor Yellow
         }
     }
 }
 
-# ログローテーション実行
+# Execute log rotation
 Rotate-Log -LogPath $LOG_FILE
 
-# ログ開始
+# Log start
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-Add-Content -Path $LOG_FILE -Value "`n========================================`n[$timestamp] Data Collector 実行開始`n========================================"
+Add-Content -Path $LOG_FILE -Value "`n========================================`n[$timestamp] Data Collector execution initiated`n========================================"
 
 try {
-    # プロジェクトディレクトリに移動
+    # Move to project directory
     Set-Location $PROJECT_ROOT
     
-    # Python実行ファイルの存在確認
+    # Verify Python executable
     if (-not (Test-Path $PYTHON_EXE)) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✗ エラー: Python実行ファイルが見つかりません: $PYTHON_EXE"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Python executable not found: $PYTHON_EXE"
         exit 1
     }
     
-    # .envファイル読み込み確認
+    # Check .env file
     if (Test-Path "$PROJECT_ROOT\.env") {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] .env ファイル検出"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] .env file detected"
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] 警告: .env ファイルが見つかりません"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] WARNING: .env file not found"
     }
     
-    # Data Collector実行
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Data Collector実行開始"
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] 実行ファイル: $PYTHON_EXE"
+    # Execute Data Collector
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Data Collector execution started"
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executable: $PYTHON_EXE"
     
-    # 同期実行（完了まで待機）
+    # Synchronous execution (wait for completion)
     $output = & $PYTHON_EXE src\presentation\cli\run_data_collector.py 2>&1
     $exitCode = $LASTEXITCODE
     
-    # 実行結果をログに記録
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ========== 実行ログ =========="
+    # Record execution results to log
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ========== Execution Log =========="
     Add-Content -Path $LOG_FILE -Value $output
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ========== 実行ログ終了 =========="
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ========== Execution Log End =========="
     
     if ($exitCode -eq 0) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✓ Data Collector実行成功"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] OK Data Collector execution successful"
         
-        # Redis統計情報取得（オプション）
+        # Get Redis statistics (optional)
         try {
             $statsScript = "from src.infrastructure.persistence.redis.redis_client import RedisClient; client = RedisClient(); stats = client.get_cache_stats(); print(f'Redis Keys: {stats[`"total_keys`"]}, Memory: {stats[`"memory_used_mb`"]:.2f}MB')"
             $statsOutput = & $PYTHON_EXE -c $statsScript 2>&1
-            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Redis統計: $statsOutput"
+            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Redis statistics: $statsOutput"
         } catch {
-            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Redis統計取得スキップ"
+            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Redis statistics retrieval skipped"
         }
         
         exit 0
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✗ エラー: Data Collector実行失敗 (ExitCode: $exitCode)"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Data Collector execution failed (ExitCode: $exitCode)"
         exit 1
     }
     
 } catch {
     $errorMsg = $_.Exception.Message
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✗ エラー発生: $errorMsg"
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: $errorMsg"
     Add-Content -Path $LOG_FILE -Value $_.ScriptStackTrace
     exit 1
 }

@@ -1,25 +1,31 @@
 # ================================================================
-# AXIA Order Manager 起動スクリプト
-# ================================================================
-# 用途: SQS注文処理マネージャーを起動
-# タスクスケジューラ: システム起動時に自動実行
+# AXIA Order Manager Startup Script
 # ================================================================
 
-# 環境変数
+# Environment variables
 $PROJECT_ROOT = "C:\Users\Administrator\Projects\axia-tss"
-$CONDA_ENV_PATH = "C:\ProgramData\miniconda3\envs\axia-env"
+$CONDA_ROOT = "C:\ProgramData\miniconda3"
+$CONDA_ENV = "axia-env"
+$CONDA_ENV_PATH = "$CONDA_ROOT\envs\$CONDA_ENV"
 $PYTHON_EXE = "$CONDA_ENV_PATH\python.exe"
 $LOG_DIR = "C:\Users\Administrator\axia-logs"
 $LOG_FILE = "$LOG_DIR\order_manager.log"
 $MAX_LOG_SIZE = 10MB
 $MAX_LOG_GENERATIONS = 5
 
-# ログディレクトリ作成
+# Initialize Conda (CRITICAL for Task Scheduler)
+$env:Path = "$CONDA_ROOT;$CONDA_ROOT\Scripts;$CONDA_ROOT\Library\bin;$CONDA_ENV_PATH;$CONDA_ENV_PATH\Scripts;$env:Path"
+$CONDA_HOOK = "$CONDA_ROOT\shell\condabin\conda-hook.ps1"
+if (Test-Path $CONDA_HOOK) {
+    . $CONDA_HOOK
+}
+
+# Log directory creation
 if (-not (Test-Path $LOG_DIR)) {
     New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null
 }
 
-# ログローテーション関数
+# Log rotation function
 function Rotate-Log {
     param([string]$LogPath)
     
@@ -37,38 +43,38 @@ function Rotate-Log {
                 }
             }
             Move-Item $LogPath "$LogPath.1" -Force
-            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ログローテーション完了: $LogPath" -ForegroundColor Yellow
+            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log rotation completed: $LogPath" -ForegroundColor Yellow
         }
     }
 }
 
-# ログローテーション実行
+# Execute log rotation
 Rotate-Log -LogPath $LOG_FILE
 
-# ログ開始
+# Log start
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-Add-Content -Path $LOG_FILE -Value "`n========================================`n[$timestamp] Order Manager 起動開始`n========================================"
+Add-Content -Path $LOG_FILE -Value "`n========================================`n[$timestamp] Order Manager startup initiated`n========================================"
 
 try {
-    # プロジェクトディレクトリに移動
+    # Move to project directory
     Set-Location $PROJECT_ROOT
     
-    # Python実行ファイルの存在確認
+    # Verify Python executable
     if (-not (Test-Path $PYTHON_EXE)) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✗ エラー: Python実行ファイルが見つかりません: $PYTHON_EXE"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Python executable not found: $PYTHON_EXE"
         exit 1
     }
     
-    # .envファイル読み込み確認
+    # Check .env file
     if (Test-Path "$PROJECT_ROOT\.env") {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] .env ファイル検出"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] .env file detected"
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] 警告: .env ファイルが見つかりません"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] WARNING: .env file not found"
     }
     
-    # Order Manager起動
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Order Manager起動コマンド実行"
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] 実行ファイル: $PYTHON_EXE"
+    # Start Order Manager
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executing Order Manager startup command"
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executable: $PYTHON_EXE"
     
     $process = Start-Process -FilePath $PYTHON_EXE `
         -ArgumentList "src\presentation\cli\run_order_processor.py" `
@@ -78,22 +84,22 @@ try {
         -NoNewWindow `
         -PassThru
     
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Order Manager起動成功 (PID: $($process.Id))"
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Order Manager started successfully (PID: $($process.Id))"
     
-    # 起動確認（5秒待機）
+    # Verify startup (wait 5 seconds)
     Start-Sleep -Seconds 5
     
     if (-not $process.HasExited) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✓ Order Managerプロセス正常稼働中"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] OK Order Manager process running normally"
         exit 0
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✗ エラー: Order Managerプロセスが終了しました"
+        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Order Manager process terminated"
         exit 1
     }
     
 } catch {
     $errorMsg = $_.Exception.Message
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ✗ エラー発生: $errorMsg"
+    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: $errorMsg"
     Add-Content -Path $LOG_FILE -Value $_.ScriptStackTrace
     exit 1
 }
