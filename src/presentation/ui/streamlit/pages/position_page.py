@@ -2,152 +2,362 @@
 
 import streamlit as st
 import pandas as pd
-from typing import Dict, Any
+import logging
+from typing import Dict, List, Optional
+from src.infrastructure.di.container import container
+
+logger = logging.getLogger(__name__)
 
 
 def render_position_page():
     """ポジション管理ページのレンダリング"""
-    _render_position_summary()
-    st.divider()
-    _render_active_positions()
-    st.divider()
-    _render_trade_history()
-
-
-def _render_position_summary():
-    """ポジション概要の表示"""
-    st.markdown("#### 💹 ポジション管理")
+    st.markdown("## 💹 ポジション管理")
     
-    # 概要メトリクス
+    # MT5PositionProviderとMT5AccountProviderを取得
+    try:
+        position_provider = container.get_mt5_position_provider()
+        account_provider = container.get_mt5_account_provider()
+    except Exception as e:
+        st.error("⚠️ MT5サービスの初期化に失敗しました")
+        logger.error(f"Failed to initialize MT5 services: {e}")
+        return
+    
+    # ページ構成
+    _render_position_summary(position_provider, account_provider)
+    st.divider()
+    _render_active_positions(position_provider)
+
+
+def _render_position_summary(position_provider, account_provider):
+    """ポジション概要の表示"""
+    
+    # データ取得
+    positions = position_provider.get_all_positions()
+    account_info = account_provider.get_account_info()
+    today_pl = account_provider.calculate_today_pl()
+    
+    # 統計計算
+    total_unrealized_pnl = sum(pos['profit'] for pos in positions)
+    realized_pnl = today_pl['amount'] - total_unrealized_pnl if today_pl else 0.0
+    
+    # 概要メトリクス（6列）
     summary_cols = st.columns(6)
+    
     with summary_cols[0]:
-        st.metric("オープン", "3", "ポジション数")
+        st.metric("オープン", f"{len(positions)}", "ポジション")
+    
     with summary_cols[1]:
-        st.metric("合計損益", "¥125,500", "+5.2%", delta_color="normal")
+        if today_pl:
+            amount = today_pl['amount']
+            percentage = today_pl['percentage']
+            delta_color = "normal" if amount >= 0 else "inverse"
+            st.metric(
+                "本日損益",
+                f"¥{amount:+,.0f}",
+                f"{percentage:+.2f}%",
+                delta_color=delta_color
+            )
+        else:
+            st.metric("本日損益", "取得中...", None)
+    
     with summary_cols[2]:
-        st.metric("含み損益", "¥45,200", "+1.8%", delta_color="normal")
+        delta_color = "normal" if total_unrealized_pnl >= 0 else "inverse"
+        st.metric(
+            "含み損益",
+            f"¥{total_unrealized_pnl:+,.0f}",
+            f"{len(positions)}ポジション",
+            delta_color=delta_color
+        )
+    
     with summary_cols[3]:
-        st.metric("実現損益", "¥80,300", "+3.4%", delta_color="normal")
+        delta_color = "normal" if realized_pnl >= 0 else "inverse"
+        st.metric(
+            "実現損益",
+            f"¥{realized_pnl:+,.0f}",
+            "本日分",
+            delta_color=delta_color
+        )
+    
     with summary_cols[4]:
-        st.metric("証拠金", "¥285,000", "28.5%使用")
+        if account_info:
+            margin = account_info['margin']
+            equity = account_info['equity']
+            margin_pct = (margin / equity * 100) if equity > 0 else 0
+            st.metric(
+                "使用証拠金",
+                f"¥{margin:,.0f}",
+                f"{margin_pct:.1f}%使用"
+            )
+        else:
+            st.metric("使用証拠金", "取得中...", None)
+    
     with summary_cols[5]:
-        st.metric("余力", "¥715,000", "71.5%")
+        if account_info:
+            free_margin = account_info['free_margin']
+            equity = account_info['equity']
+            free_pct = (free_margin / equity * 100) if equity > 0 else 0
+            st.metric(
+                "余力",
+                f"¥{free_margin:,.0f}",
+                f"{free_pct:.1f}%"
+            )
+        else:
+            st.metric("余力", "取得中...", None)
 
 
-def _render_active_positions():
+def _render_active_positions(position_provider):
     """アクティブポジションの表示"""
     st.markdown("#### 📍 アクティブポジション")
     
-    # ダミーデータ
-    positions_data = {
-        'チケット': ['#1234567', '#1234568', '#1234569'],
-        '通貨ペア': ['USDJPY', 'EURUSD', 'GBPJPY'],
-        '売買': ['BUY', 'SELL', 'BUY'],
-        'ロット': [0.10, 0.20, 0.15],
-        'エントリー': [150.250, 1.0850, 185.500],
-        '現在値': [150.450, 1.0835, 185.650],
-        '損益(円)': ['+¥20,000', '+¥32,000', '+¥15,000'],
-        '損益(pips)': ['+20.0', '+15.0', '+15.0'],
-        'TP': [151.250, 1.0750, 186.500],
-        'SL': [149.750, 1.0900, 185.000]
-    }
+    # リアルタイムポジション取得
+    try:
+        positions = position_provider.get_all_positions()
+    except Exception as e:
+        st.error("⚠️ ポジション情報の取得に失敗しました")
+        logger.error(f"Failed to get positions: {e}")
+        return
     
-    df = pd.DataFrame(positions_data)
+    if not positions:
+        st.info("📭 現在オープンポジションはありません")
+        return
+    
+    # DataFrame作成（MT5データから）
+    df_data = []
+    for pos in positions:
+        df_data.append({
+            'チケット': f"#{pos['ticket']}",
+            '通貨ペア': pos['symbol'],
+            '売買': pos['type'],
+            'ロット': pos['volume'],
+            'エントリー': pos['price_open'],
+            '現在値': pos['price_current'],
+            '損益(円)': f"¥{pos['profit']:+,.0f}",
+            '損益(pips)': f"{pos['profit_pips']:+.1f}",
+            'TP': pos['tp'] if pos['tp'] > 0 else 'なし',
+            'SL': pos['sl'] if pos['sl'] > 0 else 'なし'
+        })
+    
+    df = pd.DataFrame(df_data)
     
     # インタラクティブテーブル
-    selected = st.dataframe(
+    event = st.dataframe(
         df,
-        width='stretch',
+        use_container_width=True,
         hide_index=True,
-        selection_mode="single-row",
         on_select="rerun",
+        selection_mode="single-row",
         column_config={
-            '損益(円)': st.column_config.TextColumn(
-                '損益(円)',
-                help='現在の損益'
-            ),
-            'ロット': st.column_config.NumberColumn(
-                'ロット',
-                format='%.2f'
-            ),
-            'エントリー': st.column_config.NumberColumn(
-                'エントリー',
-                format='%.3f'
-            ),
-            '現在値': st.column_config.NumberColumn(
-                '現在値',
-                format='%.3f'
-            )
+            'チケット': st.column_config.TextColumn('チケット', width="small"),
+            '通貨ペア': st.column_config.TextColumn('通貨ペア', width="small"),
+            '売買': st.column_config.TextColumn('売買', width="small"),
+            'ロット': st.column_config.NumberColumn('ロット', format='%.2f', width="small"),
+            'エントリー': st.column_config.NumberColumn('エントリー', format='%.5f', width="medium"),
+            '現在値': st.column_config.NumberColumn('現在値', format='%.5f', width="medium"),
+            '損益(円)': st.column_config.TextColumn('損益(円)', width="medium"),
+            '損益(pips)': st.column_config.TextColumn('損益(pips)', width="small"),
+            'TP': st.column_config.TextColumn('TP', width="medium"),
+            'SL': st.column_config.TextColumn('SL', width="medium")
         }
     )
     
     # ポジション操作
-    if selected and selected.selection.rows:
-        _render_position_actions(df, selected.selection.rows[0])
+    if event.selection.rows:
+        selected_idx = event.selection.rows[0]
+        selected_position_data = positions[selected_idx]  # 元のMT5データを使用
+        _render_position_actions(selected_position_data, position_provider)
 
 
-def _render_position_actions(df: pd.DataFrame, selected_idx: int):
+def _render_position_actions(position_data: Dict, position_provider):
     """選択されたポジションに対するアクション"""
-    selected_position = df.iloc[selected_idx]
-    
     st.divider()
-    st.markdown(f"#### 🎯 選択中: {selected_position['チケット']} - {selected_position['通貨ペア']}")
+    st.markdown(
+        f"#### 🎯 選択中: #{position_data['ticket']} - {position_data['symbol']}"
+    )
     
+    # ポジション詳細表示
+    with st.expander("📊 ポジション詳細", expanded=False):
+        detail_cols = st.columns(2)
+        
+        with detail_cols[0]:
+            st.markdown(f"""
+            **基本情報**:
+            - チケット: `#{position_data['ticket']}`
+            - 通貨ペア: `{position_data['symbol']}`
+            - 売買: `{position_data['type']}`
+            - ロット: `{position_data['volume']}`
+            - エントリー価格: `{position_data['price_open']:.5f}`
+            - 現在価格: `{position_data['price_current']:.5f}`
+            """)
+        
+        with detail_cols[1]:
+            st.markdown(f"""
+            **損益情報**:
+            - 損益（円）: `¥{position_data['profit']:+,.0f}`
+            - 損益（pips）: `{position_data['profit_pips']:+.1f} pips`
+            - スワップ: `¥{position_data['swap']:+,.2f}`
+            - TP: `{position_data['tp']:.5f if position_data['tp'] > 0 else 'なし'}`
+            - SL: `{position_data['sl']:.5f if position_data['sl'] > 0 else 'なし'}`
+            """)
+        
+        st.caption(f"オープン時刻: {position_data['time'].strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        st.caption(f"Magic Number: {position_data['magic']}")
+        st.caption(f"コメント: {position_data['comment']}")
+    
+    # 操作ボタン
     action_cols = st.columns(6)
+    
     with action_cols[0]:
-        if st.button("📊 詳細表示", width='stretch'):
-            _show_position_details(selected_position)
+        if st.button("🔄 更新", use_container_width=True, key=f"refresh_{position_data['ticket']}"):
+            st.rerun()
     
     with action_cols[1]:
-        if st.button("✏️ TP/SL修正", width='stretch'):
-            _show_modify_dialog(selected_position)
+        if st.button("50%決済", use_container_width=True, key=f"partial50_{position_data['ticket']}"):
+            _partial_close_position(
+                position_data['ticket'],
+                position_data['volume'] * 0.5,
+                position_provider
+            )
     
     with action_cols[2]:
-        if st.button("➗ 50%決済", width='stretch'):
-            _partial_close_position(selected_position, 0.5)
+        if st.button("部分決済", use_container_width=True, key=f"partial_{position_data['ticket']}"):
+            _show_partial_close_dialog(position_data, position_provider)
     
     with action_cols[3]:
-        if st.button("🔻 部分決済", width='stretch'):
-            _show_partial_close_dialog(selected_position)
+        # Phase 2実装予定
+        st.button("✏️ TP変更", use_container_width=True, disabled=True, key=f"tp_{position_data['ticket']}")
     
     with action_cols[4]:
-        if st.button("⏸️ ヘッジ", width='stretch'):
-            _hedge_position(selected_position)
+        # Phase 2実装予定  
+        st.button("✏️ SL変更", use_container_width=True, disabled=True, key=f"sl_{position_data['ticket']}")
     
     with action_cols[5]:
-        if st.button("❌ 全決済", type="secondary", width='stretch'):
-            _close_position(selected_position)
+        if st.button("❌ 全決済", use_container_width=True, type="primary", key=f"close_{position_data['ticket']}"):
+            _close_position(position_data['ticket'], position_provider)
 
 
-def _render_trade_history():
-    """取引履歴の表示"""
+def _partial_close_position(ticket: int, volume: float, position_provider):
+    """部分決済実行"""
+    with st.spinner(f'ポジション #{ticket} を {volume} ロット決済中...'):
+        try:
+            success, error = position_provider.close_position(ticket, volume=volume)
+            
+            if success:
+                st.success(f"✅ ポジション #{ticket} の {volume} ロットを決済しました")
+                logger.info(f"Partial close successful: {ticket}, volume={volume}")
+                st.rerun()
+            else:
+                st.error(f"❌ 部分決済に失敗しました: {error}")
+                logger.error(f"Partial close failed: {ticket}, error={error}")
+                
+        except Exception as e:
+            st.error(f"❌ 部分決済エラー: {str(e)}")
+            logger.error(f"Exception during partial close: {e}", exc_info=True)
+
+
+def _show_partial_close_dialog(position_data: Dict, position_provider):
+    """部分決済ダイアログ"""
+    max_volume = position_data['volume']
+    
+    with st.form(key=f"partial_close_form_{position_data['ticket']}"):
+        st.markdown(f"**ポジション #{position_data['ticket']} 部分決済**")
+        
+        volume = st.number_input(
+            "決済ロット数",
+            min_value=0.01,
+            max_value=max_volume,
+            value=max_volume * 0.5,
+            step=0.01,
+            format="%.2f",
+            help=f"最大: {max_volume} ロット"
+        )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.form_submit_button("💰 部分決済実行", type="primary"):
+                _partial_close_position(position_data['ticket'], volume, position_provider)
+        
+        with col2:
+            if st.form_submit_button("❌ キャンセル"):
+                st.rerun()
+
+
+def _close_position(ticket: int, position_provider):
+    """全決済実行"""
+    with st.spinner(f'ポジション #{ticket} を全決済中...'):
+        try:
+            success, error = position_provider.close_position(ticket)
+            
+            if success:
+                st.success(f"✅ ポジション #{ticket} を決済しました")
+                logger.info(f"Position closed successfully: {ticket}")
+                st.rerun()
+            else:
+                st.error(f"❌ ポジション決済に失敗しました: {error}")
+                logger.error(f"Position close failed: {ticket}, error={error}")
+                
+        except Exception as e:
+            st.error(f"❌ 決済エラー: {str(e)}")
+            logger.error(f"Exception during position close: {e}", exc_info=True)
+
+
+def _render_trade_history(account_provider = None):
+    """取引履歴の表示（将来実装）"""
     st.markdown("#### 📜 本日の取引履歴")
     
-    history_data = {
-        '時刻': ['14:35', '10:15', '09:45'],
-        '通貨': ['GBPJPY', 'AUDUSD', 'EURUSD'],
-        '売買': ['BUY', 'SELL', 'BUY'],
-        '損益': ['+¥1,250', '-¥850', '+¥2,100']
-    }
+    # Phase 2実装予定: MT5履歴API利用
+    # history_deals = mt5.history_deals_get(today_start, now)
     
-    st.dataframe(pd.DataFrame(history_data), width='stretch')
+    # 暫定表示
+    st.info("📋 取引履歴機能は Phase 2で実装予定")
+    st.caption("MT5の履歴APIを使用してリアルタイム取引履歴を表示します")
 
 
-# ヘルパー関数（ダミー実装）
-def _show_position_details(position):
-    st.info(f"{position['チケット']}の詳細を表示")
+# ユーティリティ関数
+def _format_currency(amount: float) -> str:
+    """通貨フォーマット"""
+    return f"¥{amount:+,.0f}"
 
-def _show_modify_dialog(position):
-    st.info("TP/SL修正機能は実装予定")
 
-def _partial_close_position(position, ratio):
-    st.info(f"{position['チケット']}を{ratio*100}%決済")
+def _format_percentage(value: float) -> str:
+    """パーセンテージフォーマット"""
+    return f"{value:+.2f}%"
 
-def _show_partial_close_dialog(position):
-    st.info("部分決済機能は実装予定")
 
-def _hedge_position(position):
-    st.info("ヘッジ機能は実装予定")
+def _get_pnl_color(pnl: float) -> str:
+    """損益に基づく色判定"""
+    if pnl > 0:
+        return "normal"
+    elif pnl < 0:
+        return "inverse"
+    else:
+        return "off"
 
-def _close_position(position):
-    st.warning(f"{position['チケット']}を決済")
+
+# エラーハンドリング付きのキャッシュクリア
+def clear_position_cache():
+    """ポジションキャッシュをクリア"""
+    try:
+        # Streamlitキャッシュクリア
+        if hasattr(st, 'cache_data'):
+            st.cache_data.clear()
+        
+        logger.info("Position cache cleared")
+    except Exception as e:
+        logger.warning(f"Failed to clear cache: {e}")
+
+
+# セッション状態管理
+def initialize_session_state():
+    """セッション状態初期化"""
+    if 'last_position_refresh' not in st.session_state:
+        st.session_state.last_position_refresh = None
+    
+    if 'selected_position' not in st.session_state:
+        st.session_state.selected_position = None
+
+
+# ページエントリーポイント
+if __name__ == "__main__":
+    # デバッグ用ローカル実行
+    initialize_session_state()
+    render_position_page()
