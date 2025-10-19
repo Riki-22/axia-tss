@@ -12,7 +12,7 @@
 
 ```powershell
 # 管理者権限のPowerShellで実行
-cd C:\Users\Administrator\Projects\axia-tss\deployment\shell
+cd C:\Users\Administrator\Projects\axia-tss\deployment\shell\ec2
 
 # タスク一括登録実行
 .\register_scheduled_tasks.ps1

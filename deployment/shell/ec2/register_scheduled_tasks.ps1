@@ -15,7 +15,7 @@ if (-not $isAdmin) {
 
 # Environment variables
 $PROJECT_ROOT = "C:\Users\Administrator\Projects\axia-tss"
-$SCRIPT_DIR = "$PROJECT_ROOT\deployment\shell"
+$SCRIPT_DIR = "$PROJECT_ROOT\deployment\shell\ec2"
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "AXIA Task Scheduler Registration Started" -ForegroundColor Cyan
