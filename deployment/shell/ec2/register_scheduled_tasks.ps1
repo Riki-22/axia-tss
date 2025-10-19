@@ -1,5 +1,5 @@
 # ================================================================
-# AXIA Task Scheduler Registration Script
+# AXIA Task Scheduler Registration Script (AtLogOn Version)
 # ================================================================
 # Purpose: Register 4 tasks to Windows Task Scheduler
 # Execute: Run with Administrator privileges in PowerShell
@@ -41,11 +41,12 @@ $action1 = New-ScheduledTaskAction `
     -Argument "-ExecutionPolicy Bypass -NoProfile -File `"$SCRIPT_DIR\start_streamlit.ps1`"" `
     -WorkingDirectory $PROJECT_ROOT
 
-$trigger1 = New-ScheduledTaskTrigger -AtStartup
+# AtLogOn: Runs when Administrator logs in
+$trigger1 = New-ScheduledTaskTrigger -AtLogOn -User "Administrator"
 
 $principal1 = New-ScheduledTaskPrincipal `
-    -UserId "SYSTEM" `
-    -LogonType ServiceAccount `
+    -UserId "Administrator" `
+    -LogonType Interactive `
     -RunLevel Highest
 
 $settings1 = New-ScheduledTaskSettingsSet `
@@ -62,9 +63,9 @@ Register-ScheduledTask `
     -Trigger $trigger1 `
     -Principal $principal1 `
     -Settings $settings1 `
-    -Description "AXIA Streamlit UI (Port: 8501)" | Out-Null
+    -Description "AXIA Streamlit UI (Port: 8501) - Runs when Administrator logs in" | Out-Null
 
-Write-Host "OK AXIA_Streamlit registered" -ForegroundColor Green
+Write-Host "OK AXIA_Streamlit registered (AtLogOn)" -ForegroundColor Green
 
 # ========================================
 # Task 2: AXIA_Order_Manager
@@ -76,11 +77,12 @@ $action2 = New-ScheduledTaskAction `
     -Argument "-ExecutionPolicy Bypass -NoProfile -File `"$SCRIPT_DIR\start_order_manager.ps1`"" `
     -WorkingDirectory $PROJECT_ROOT
 
-$trigger2 = New-ScheduledTaskTrigger -AtStartup
+# AtLogOn: Runs when Administrator logs in
+$trigger2 = New-ScheduledTaskTrigger -AtLogOn -User "Administrator"
 
 $principal2 = New-ScheduledTaskPrincipal `
-    -UserId "SYSTEM" `
-    -LogonType ServiceAccount `
+    -UserId "Administrator" `
+    -LogonType Interactive `
     -RunLevel Highest
 
 $settings2 = New-ScheduledTaskSettingsSet `
@@ -97,9 +99,9 @@ Register-ScheduledTask `
     -Trigger $trigger2 `
     -Principal $principal2 `
     -Settings $settings2 `
-    -Description "AXIA SQS Order Processor" | Out-Null
+    -Description "AXIA SQS Order Processor - Runs when Administrator logs in" | Out-Null
 
-Write-Host "OK AXIA_Order_Manager registered" -ForegroundColor Green
+Write-Host "OK AXIA_Order_Manager registered (AtLogOn)" -ForegroundColor Green
 
 # ========================================
 # Task 3: AXIA_MT5
@@ -111,7 +113,8 @@ $action3 = New-ScheduledTaskAction `
     -Argument "-ExecutionPolicy Bypass -NoProfile -File `"$SCRIPT_DIR\start_mt5_connector.ps1`"" `
     -WorkingDirectory $PROJECT_ROOT
 
-$trigger3 = New-ScheduledTaskTrigger -AtStartup
+# AtLogOn: Runs when Administrator logs in
+$trigger3 = New-ScheduledTaskTrigger -AtLogOn -User "Administrator"
 
 $principal3 = New-ScheduledTaskPrincipal `
     -UserId "Administrator" `
@@ -132,9 +135,9 @@ Register-ScheduledTask `
     -Trigger $trigger3 `
     -Principal $principal3 `
     -Settings $settings3 `
-    -Description "AXIA MT5 Connection Manager" | Out-Null
+    -Description "AXIA MT5 Connection Manager - Runs when Administrator logs in" | Out-Null
 
-Write-Host "OK AXIA_MT5 registered" -ForegroundColor Green
+Write-Host "OK AXIA_MT5 registered (AtLogOn)" -ForegroundColor Green
 
 # ========================================
 # Task 4: AXIA_Data_Collector
@@ -181,15 +184,17 @@ $registeredTasks = Get-ScheduledTask | Where-Object { $_.TaskName -like "AXIA_*"
 foreach ($task in $registeredTasks) {
     $state = $task.State
     $stateColor = if ($state -eq "Ready") { "Green" } else { "Yellow" }
-    Write-Host "  OK $($task.TaskName) [$state]" -ForegroundColor $stateColor
+    $triggerType = if ($task.Triggers[0].CimClass.CimClassName -like "*LogonTrigger*") { "AtLogOn" } elseif ($task.Triggers[0].CimClass.CimClassName -like "*WeeklyTrigger*") { "Weekly" } else { "Other" }
+    Write-Host "  OK $($task.TaskName) [$state] Trigger: $triggerType" -ForegroundColor $stateColor
 }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "Task Scheduler Registration Completed" -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
 
+Write-Host "IMPORTANT: Tasks will run when Administrator logs in" -ForegroundColor Yellow
 Write-Host "Next Steps:" -ForegroundColor Yellow
 Write-Host "  1. Open Task Scheduler: taskschd.msc" -ForegroundColor White
-Write-Host "  2. Manually run each task to test" -ForegroundColor White
+Write-Host "  2. Log out and log back in to test automatic startup" -ForegroundColor White
 Write-Host "  3. Check logs: C:\Users\Administrator\axia-logs\" -ForegroundColor White
-Write-Host "  4. EC2 reboot test: Restart-Computer" -ForegroundColor White
+Write-Host "  4. Verify MT5 AutoTrading is enabled" -ForegroundColor White
