@@ -6,6 +6,8 @@ from src.infrastructure.persistence.dynamodb.dynamodb_kill_switch_repository imp
 from src.infrastructure.persistence.dynamodb.dynamodb_order_repository import DynamoDBOrderRepository
 from src.infrastructure.gateways.brokers.mt5.mt5_connection import MT5Connection
 from src.infrastructure.gateways.brokers.mt5.mt5_order_executor import MT5OrderExecutor
+from src.infrastructure.gateways.brokers.mt5.mt5_price_provider import MT5PriceProvider
+from src.infrastructure.gateways.brokers.mt5.mt5_account_provider import MT5AccountProvider
 from src.infrastructure.persistence.redis import RedisClient, RedisOhlcvDataRepository
 from src.domain.services.order_validation import OrderValidationService
 from src.infrastructure.gateways.messaging.sqs.order_publisher import SQSOrderPublisher
@@ -25,6 +27,8 @@ class DIContainer:
         self._ohlcv_cache: Optional[RedisOhlcvDataRepository] = None
         self._sqs_order_publisher: Optional[SQSOrderPublisher] = None
         self._ohlcv_data_provider: Optional[OhlcvDataProvider] = None
+        self._mt5_price_provider: Optional[MT5PriceProvider] = None
+        self._mt5_account_provider: Optional[MT5AccountProvider] = None
     
     def get_kill_switch_repository(self) -> DynamoDBKillSwitchRepository:
         """Kill Switchリポジトリを取得（シングルトン）"""
@@ -215,6 +219,59 @@ class DIContainer:
             )
         
         return self._ohlcv_data_provider
+
+    def get_mt5_price_provider(self) -> MT5PriceProvider:
+        """
+        MT5価格プロバイダーを取得（シングルトン）
+        
+        リアルタイム価格情報（Bid/Ask/スプレッド）を提供する
+        
+        Returns:
+            MT5PriceProvider: MT5価格情報プロバイダー
+        
+        Usage:
+            >>> container = DIContainer()
+            >>> price_provider = container.get_mt5_price_provider()
+            >>> price_info = price_provider.get_current_price('USDJPY')
+        
+        Note:
+            - 命名規則: Provider suffix（データ提供の責務）
+            - パターン: OhlcvDataProviderと一貫性
+            - Day 3午後実装（2025-10-19）
+        """
+        if not self._mt5_price_provider:
+            self._mt5_price_provider = MT5PriceProvider(
+                connection=self.get_mt5_connection()
+            )
+            logger.info("MT5PriceProvider initialized")
+        return self._mt5_price_provider
+    
+    def get_mt5_account_provider(self) -> MT5AccountProvider:
+        """
+        MT5口座情報プロバイダーを取得（シングルトン）
+        
+        口座残高、証拠金、本日損益（NYクローズ基準）を提供する
+        
+        Returns:
+            MT5AccountProvider: MT5口座情報プロバイダー
+        
+        Usage:
+            >>> container = DIContainer()
+            >>> account_provider = container.get_mt5_account_provider()
+            >>> account_info = account_provider.get_account_info()
+            >>> today_pl = account_provider.calculate_today_pl()
+        
+        Note:
+            - 命名規則: Provider suffix（データ提供の責務）
+            - NYクローズ基準の損益計算を提供
+            - Day 3午後実装（2025-10-19）
+        """
+        if not self._mt5_account_provider:
+            self._mt5_account_provider = MT5AccountProvider(
+                connection=self.get_mt5_connection()
+            )
+            logger.info("MT5AccountProvider initialized")
+        return self._mt5_account_provider
 
 # シングルトンインスタンス
 container = DIContainer()

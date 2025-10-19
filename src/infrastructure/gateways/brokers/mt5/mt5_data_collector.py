@@ -109,7 +109,7 @@ class MT5DataCollector:
         
         MT5からローソク足データを取得し、標準OHLCV形式に変換して返す
         タイムフレームは文字列（"H1", "D1"等）で受け取り、内部で
-        MT5固有のint値に変換します。
+        MT5固有のint値に変換する
         
         Args:
             symbol: 通貨ペアシンボル（例: "USDJPY", "EURUSD"）

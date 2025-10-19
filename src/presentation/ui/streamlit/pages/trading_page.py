@@ -220,10 +220,10 @@ def _execute_order(
     order_publisher
 ):
     """
-    注文実行（SQS送信）
+    注文実行（SQS送信）- 現在価格ベース
     
     処理フロー:
-    1. 現在価格取得（ダミー実装）
+    1. MT5から現在価格取得 
     2. TP/SL価格計算
     3. 注文データ作成
     4. SQS送信
@@ -238,21 +238,33 @@ def _execute_order(
         order_publisher: SQSOrderPublisher
     """
     try:
-        # 現在価格取得（暫定実装：固定値）
-        # TODO: OhlcvDataProviderから現在価格を取得
-        current_prices = {
-            'USDJPY': 150.0,
-            'EURJPY': 165.0,
-            'GBPJPY': 190.0,
-            'EURUSD': 1.10,
-            'GBPUSD': 1.27
-        }
-        current_price = current_prices.get(symbol, 150.0)
+        # MT5価格プロバイダー取得
+        price_provider = container.get_mt5_price_provider()
         
-        # pip値の計算
-        # JPYペア: 0.01
-        # その他: 0.0001
-        pip_value = 0.01 if 'JPY' in symbol else 0.0001
+        # 現在価格取得 ★修正★
+        price_info = price_provider.get_current_price(symbol)
+        
+        if price_info is None:
+            st.error(f"❌ {symbol}の現在価格を取得できませんでした")
+            logger.error(f"Failed to get price for {symbol}")
+            return
+        
+        # BUY注文の場合はask価格、SELL注文の場合はbid価格を使用
+        current_price = price_info['ask'] if action == "BUY" else price_info['bid']
+        
+        logger.info(
+            f"Current price for {symbol} {action}: {current_price} "
+            f"(bid={price_info['bid']}, ask={price_info['ask']}, "
+            f"spread={price_info['spread']:.1f} pips)"
+        )
+        
+        # pip値の取得 ★修正★
+        symbol_info = price_provider.get_symbol_info(symbol)
+        if symbol_info:
+            pip_value = symbol_info['point'] * 10  # 1pip = 10 points
+        else:
+            # フォールバック: JPYペアかどうかで判定
+            pip_value = 0.01 if 'JPY' in symbol else 0.0001
         
         # TP/SL価格計算
         if action == "BUY":
@@ -295,7 +307,8 @@ def _execute_order(
             **注文内容**:
             - 通貨ペア: `{symbol}`
             - ロット: `{lot_size}`
-            - エントリー: `{current_price:.5f}` (参考)
+            - エントリー: `{current_price:.5f}` (現在価格)
+            - スプレッド: `{price_info['spread']:.1f} pips` 
             - TP: `{tp_price:.5f}` ({tp_pips} pips)
             - SL: `{sl_price:.5f}` ({sl_pips} pips)
             - R/R比: `{rr:.2f}`
@@ -312,7 +325,7 @@ def _execute_order(
             """)
             
             logger.info(
-                f"Order sent successfully: {symbol} {action} {lot_size} lot, "
+                f"Order sent successfully: {symbol} {action} {lot_size} lot @ {current_price}, "
                 f"MessageID={message}"
             )
             
