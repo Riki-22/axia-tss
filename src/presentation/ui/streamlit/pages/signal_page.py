@@ -100,7 +100,9 @@ def _render_signal_chart():
             
             # チャート表示
             if chart:
-                st.plotly_chart(chart, width="stretch", config={'displayModeBar': True})
+                st.plotly_chart(chart, use_container_width=True)
+            else:
+                st.warning("チャートの生成に失敗しました")
             
             # データソース情報表示
             _render_data_source_info(metadata, symbol, timeframe)
@@ -152,32 +154,32 @@ def _render_signal_analysis():
     
     st.markdown(f"#### 📊 {symbol} {timeframe} シグナル分析")
     
-    # シグナル設定
-    signal_cols = st.columns(2)
+    # シグナル設定（1列レイアウト）
+    st.markdown("##### 🔧 シグナル設定")
     
-    with signal_cols[0]:
-        st.markdown("##### 🔧 シグナル設定")
-        
-        # シグナル表示オプション（デフォルトON）
-        show_trend = st.checkbox("📈 トレンド系指標", value=True, key="show_trend_signals")
-        show_oscillator = st.checkbox("📊 オシレーター", value=True, key="show_oscillator_signals")  
+    # シグナル表示オプション（横並び）
+    signal_option_cols = st.columns(4)
+    with signal_option_cols[0]:
+        show_trend = st.checkbox("📈 トレンド", value=True, key="show_trend_signals")
+    with signal_option_cols[1]:
+        show_oscillator = st.checkbox("📊 オシレーター", value=True, key="show_oscillator_signals")
+    with signal_option_cols[2]:
         show_volatility = st.checkbox("💨 ボラティリティ", value=True, key="show_volatility_signals")
-        show_patterns = st.checkbox("🔍 チャートパターン", value=True, key="show_pattern_signals")
-        
-        # シグナル感度
-        sensitivity = st.slider("シグナル感度", 1, 10, 5, key="signal_sensitivity")
+    with signal_option_cols[3]:
+        show_patterns = st.checkbox("🔍 パターン", value=True, key="show_pattern_signals")
     
-    with signal_cols[1]:
-        st.markdown("##### 📋 検出シグナル")
-        
-        # シグナル一覧（実装時はテクニカル指標から取得）
-        _render_signal_list(symbol, timeframe, {
-            'trend': show_trend,
-            'oscillator': show_oscillator,
-            'volatility': show_volatility,
-            'patterns': show_patterns,
-            'sensitivity': sensitivity
-        })
+    # シグナル感度
+    sensitivity = st.slider("シグナル感度", 1, 10, 5, key="signal_sensitivity")
+    
+    # シグナル詳細表示
+    st.markdown("##### 📋 検出シグナル")
+    _render_signal_list(symbol, timeframe, {
+        'trend': show_trend,
+        'oscillator': show_oscillator,
+        'volatility': show_volatility,
+        'patterns': show_patterns,
+        'sensitivity': sensitivity
+    })
 
 
 def _render_signal_list(symbol: str, timeframe: str, signal_config: dict):
@@ -186,47 +188,40 @@ def _render_signal_list(symbol: str, timeframe: str, signal_config: dict):
     # Phase 3実装予定: 実際のテクニカル指標から取得
     # 現在はダミーデータ
     
-    st.markdown("**🔍 検出中のシグナル:**")
+    # シグナル表示エリア
+    signal_display_cols = st.columns(2)
     
-    if signal_config['trend']:
-        with st.expander("📈 トレンド系シグナル", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.success("✅ MACD: BUYシグナル")
-                st.info("📊 移動平均: 上昇トレンド")
-            with col2:
-                st.warning("⚠️ ブレイクアウト: 監視中") 
-                st.success("✅ トレンド強度: 強")
+    with signal_display_cols[0]:
+        if signal_config['trend']:
+            st.markdown("**📈 トレンド系シグナル**")
+            st.success("✅ MACD: BUYシグナル")
+            st.info("📊 移動平均: 上昇トレンド")
+            st.warning("⚠️ ブレイクアウト: 監視中") 
+            st.success("✅ トレンド強度: 強")
+            st.markdown("---")
+        
+        if signal_config['volatility']:
+            st.markdown("**💨 ボラティリティ系シグナル**")
+            st.success("✅ ボリンジャー: 下部反発")
+            st.info("📊 ATR: 0.0045 (標準)")
+            st.success("✅ ボラティリティ: 拡大中")
+            st.warning("⚠️ スクイーズ: 解除")
     
-    if signal_config['oscillator']:
-        with st.expander("📊 オシレーター系シグナル", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.warning("⚠️ RSI: 中立圏 (55)")
-                st.success("✅ Stochastic: BUYゾーン")
-            with col2:
-                st.error("❌ RCI: SELLシグナル")
-                st.info("📊 モメンタム: 弱気")
-    
-    if signal_config['volatility']:
-        with st.expander("💨 ボラティリティ系シグナル", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.success("✅ ボリンジャー: 下部反発")
-                st.info("📊 ATR: 0.0045 (標準)")
-            with col2:
-                st.success("✅ ボラティリティ: 拡大中")
-                st.warning("⚠️ スクイーズ: 解除")
-    
-    if signal_config['patterns']:
-        with st.expander("🔍 チャートパターン", expanded=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.success("✅ ピンバー: 反転シグナル")
-                st.info("📊 エンガルフィング: 未検出")
-            with col2:
-                st.success("✅ サポート/レジスタンス: 150.65")
-                st.info("📊 フィボナッチ: 61.8%水準")
+    with signal_display_cols[1]:
+        if signal_config['oscillator']:
+            st.markdown("**📊 オシレーター系シグナル**")
+            st.warning("⚠️ RSI: 中立圏 (55)")
+            st.success("✅ Stochastic: BUYゾーン")
+            st.error("❌ RCI: SELLシグナル")
+            st.info("📊 モメンタム: 弱気")
+            st.markdown("---")
+        
+        if signal_config['patterns']:
+            st.markdown("**🔍 チャートパターン**")
+            st.success("✅ ピンバー: 反転シグナル")
+            st.info("📊 エンガルフィング: 未検出")
+            st.success("✅ サポート/レジスタンス: 150.65")
+            st.info("📊 フィボナッチ: 61.8%水準")
     
     # 統合シグナル
     st.markdown("---")
