@@ -227,7 +227,7 @@ def _render_signal_list(symbol: str, timeframe: str, signal_config: dict):
     
     # 統合シグナル
     st.markdown("---")
-    st.markdown("** 統合判定:**")
+    st.markdown("**統合判定:**")
     
     # シンプルな統合ロジック（Phase 3で高度化）
     trend_score = 3 if signal_config['trend'] else 0
