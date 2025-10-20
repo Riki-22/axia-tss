@@ -9,6 +9,7 @@ from src.infrastructure.gateways.brokers.mt5.mt5_order_executor import MT5OrderE
 from src.infrastructure.gateways.brokers.mt5.mt5_price_provider import MT5PriceProvider
 from src.infrastructure.gateways.brokers.mt5.mt5_account_provider import MT5AccountProvider
 from src.infrastructure.gateways.brokers.mt5.mt5_position_provider import MT5PositionProvider
+from src.infrastructure.persistence.dynamodb.dynamodb_position_repository import DynamoDBPositionRepository
 from src.infrastructure.persistence.redis import RedisClient, RedisOhlcvDataRepository
 from src.domain.services.order_validation import OrderValidationService
 from src.infrastructure.gateways.messaging.sqs.order_publisher import SQSOrderPublisher
@@ -31,6 +32,7 @@ class DIContainer:
         self._mt5_price_provider: Optional[MT5PriceProvider] = None
         self._mt5_account_provider: Optional[MT5AccountProvider] = None
         self._mt5_position_provider: Optional[MT5PositionProvider] = None
+        self._position_repository: Optional[DynamoDBPositionRepository] = None
     
     def get_kill_switch_repository(self) -> DynamoDBKillSwitchRepository:
         """Kill Switchリポジトリを取得（シングルトン）"""
@@ -302,6 +304,35 @@ class DIContainer:
             )
             logger.info("MT5PositionProvider initialized")
         return self._mt5_position_provider
+    
+    def get_position_repository(self) -> DynamoDBPositionRepository:
+        """
+        ポジションリポジトリを取得（シングルトン）
+        
+        Position Entity の永続化・検索を担当
+        
+        Returns:
+            DynamoDBPositionRepository: ポジションリポジトリ
+        
+        Usage:
+            >>> container = DIContainer()
+            >>> repo = container.get_position_repository()
+            >>> open_positions = repo.find_open_positions()
+            >>> success = repo.save(position_entity)
+        
+        Note:
+            - GSI1（OPEN_POSITIONS）を活用
+            - 楽観的ロック対応（version管理）
+            - MT5Ticket逆引き対応
+            - Order ↔ Position関連付け基盤
+        """
+        if not self._position_repository:
+            self._position_repository = DynamoDBPositionRepository(
+                table_name=self.settings.dynamodb_table_name,
+                dynamodb_resource=self.settings.dynamodb_resource
+            )
+            logger.info("DynamoDBPositionRepository initialized")
+        return self._position_repository
 
 # シングルトンインスタンス
 container = DIContainer()

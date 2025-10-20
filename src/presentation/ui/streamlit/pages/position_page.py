@@ -280,22 +280,46 @@ def _render_position_actions(position_data: Dict, position_provider):
 
 
 def _partial_close_position(ticket: int, volume: float, position_provider):
-    """部分決済実行（セッション状態管理改善）"""
+    """部分決済実行（SQS統一アーキテクチャ）"""
     try:
-        success, error = position_provider.close_position(ticket, volume=volume)
+        # ポジション情報取得（SQSメッセージ作成用）
+        position_info = position_provider.get_position_by_ticket(ticket)
+        if not position_info:
+            st.session_state.position_action_result = {
+                'success': False,
+                'message': f"❌ ポジション #{ticket} が見つかりません"
+            }
+            st.rerun()
+            return
+        
+        # CLOSE注文メッセージ作成（部分決済）
+        close_order_data = {
+            'symbol': position_info['symbol'],
+            'order_action': 'CLOSE',
+            'order_type': 'MARKET', 
+            'lot_size': volume,  # 部分決済ロット数
+            'mt5_ticket': ticket,
+            'tp_price': 0.0,  # CLOSE注文では不要
+            'sl_price': 0.0,  # CLOSE注文では不要
+            'comment': f'Streamlit_Partial_Close_{volume}'
+        }
+        
+        # SQS送信
+        order_publisher = container.get_sqs_order_publisher()
+        success, message_id = order_publisher.send_order(close_order_data)
         
         if success:
             st.session_state.position_action_result = {
                 'success': True,
-                'message': f"✅ ポジション #{ticket} の {volume} ロットを決済しました"
+                'message': f"✅ ポジション #{ticket} の {volume} ロット決済注文を送信しました"
             }
-            logger.info(f"Partial close successful: {ticket}, volume={volume}")
+            logger.info(f"Partial close order sent via SQS: {ticket}, volume={volume}, MessageID={message_id}")
         else:
             st.session_state.position_action_result = {
                 'success': False,
-                'message': f"❌ 部分決済に失敗しました: {error}"
+                'message': f"❌ 部分決済注文送信に失敗しました: {message_id}"
             }
-            logger.error(f"Partial close failed: {ticket}, error={error}")
+            logger.error(f"Partial close SQS send failed: {ticket}, error={message_id}")
         
         st.rerun()
         
@@ -351,23 +375,46 @@ def _show_partial_close_dialog(position_data: Dict, position_provider):
 
 
 def _close_position(ticket: int, position_provider):
-    """全決済実行（セッション状態管理改善）"""
+    """全決済実行（SQS統一アーキテクチャ）"""
     try:
-        success, error = position_provider.close_position(ticket)
+        # ポジション情報取得（SQSメッセージ作成用）
+        position_info = position_provider.get_position_by_ticket(ticket)
+        if not position_info:
+            st.session_state.position_action_result = {
+                'success': False,
+                'message': f"❌ ポジション #{ticket} が見つかりません"
+            }
+            st.rerun()
+            return
+        
+        # CLOSE注文メッセージ作成
+        close_order_data = {
+            'symbol': position_info['symbol'],
+            'order_action': 'CLOSE',
+            'order_type': 'MARKET',
+            'lot_size': position_info['volume'],  # 全決済
+            'mt5_ticket': ticket,
+            'tp_price': 0.0,  # CLOSE注文では不要（バリデーション用）
+            'sl_price': 0.0,  # CLOSE注文では不要（バリデーション用）
+            'comment': 'Streamlit_Position_Close'
+        }
+        
+        # SQS送信（注文と同じフロー）
+        order_publisher = container.get_sqs_order_publisher()
+        success, message_id = order_publisher.send_order(close_order_data)
         
         if success:
-            # セッション状態に結果を保存
             st.session_state.position_action_result = {
                 'success': True,
-                'message': f"✅ ポジション #{ticket} を決済しました"
+                'message': f"✅ ポジション #{ticket} の決済注文を送信しました（MessageID: {message_id[:16]}...）"
             }
-            logger.info(f"Position closed successfully: {ticket}")
+            logger.info(f"Position close order sent via SQS: {ticket}, MessageID={message_id}")
         else:
             st.session_state.position_action_result = {
                 'success': False,
-                'message': f"❌ ポジション決済に失敗しました: {error}"
+                'message': f"❌ 決済注文送信に失敗しました: {message_id}"
             }
-            logger.error(f"Position close failed: {ticket}, error={error}")
+            logger.error(f"Position close SQS send failed: {ticket}, error={message_id}")
         
         # 選択状態をクリア
         st.session_state.selected_position_ticket = None
@@ -376,7 +423,7 @@ def _close_position(ticket: int, position_provider):
     except Exception as e:
         st.session_state.position_action_result = {
             'success': False,
-            'message': f"❌ 決済エラー: {str(e)}"
+            'message': f"❌ 決済処理エラー: {str(e)}"
         }
         logger.error(f"Exception during position close: {e}", exc_info=True)
         st.rerun()

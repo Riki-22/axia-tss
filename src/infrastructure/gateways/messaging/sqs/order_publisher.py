@@ -142,15 +142,28 @@ class SQSOrderPublisher:
         - lot_sizeの範囲（0より大きい）
         - tp_price, sl_priceの妥当性
         """
-        # 必須フィールドチェック
-        required_fields = [
-            'symbol',
-            'order_action',
-            'order_type',
-            'lot_size',
-            'tp_price',
-            'sl_price'
-        ]
+        # 必須フィールドチェック（CLOSE注文は例外あり）
+        order_action = order_data.get('order_action', '').upper()
+        
+        if order_action == 'CLOSE':
+            # CLOSE注文の必須フィールド
+            required_fields = [
+                'symbol',
+                'order_action',
+                'order_type',
+                'lot_size',
+                'mt5_ticket'  # CLOSE注文特有
+            ]
+        else:
+            # 通常注文の必須フィールド
+            required_fields = [
+                'symbol',
+                'order_action', 
+                'order_type',
+                'lot_size',
+                'tp_price',
+                'sl_price'
+            ]
         
         for field in required_fields:
             if field not in order_data:
@@ -186,17 +199,28 @@ class SQSOrderPublisher:
             logger.error(f"Invalid lot_size type: {order_data['lot_size']}, {e}")
             return False
         
-        # tp_price, sl_priceチェック
-        try:
-            tp_price = float(order_data['tp_price'])
-            sl_price = float(order_data['sl_price'])
-            
-            if tp_price <= 0 or sl_price <= 0:
-                logger.error(f"Invalid prices: TP={tp_price}, SL={sl_price}")
+        # tp_price, sl_priceチェック（CLOSE注文は不要）
+        if order_action != 'CLOSE':
+            try:
+                tp_price = float(order_data['tp_price'])
+                sl_price = float(order_data['sl_price'])
+                
+                if tp_price <= 0 or sl_price <= 0:
+                    logger.error(f"Invalid prices: TP={tp_price}, SL={sl_price}")
+                    return False
+            except (ValueError, TypeError) as e:
+                logger.error(f"Invalid price type: {e}")
                 return False
-        except (ValueError, TypeError) as e:
-            logger.error(f"Invalid price type: {e}")
-            return False
+        else:
+            # CLOSE注文の場合はmt5_ticketをチェック
+            try:
+                mt5_ticket = int(order_data['mt5_ticket'])
+                if mt5_ticket <= 0:
+                    logger.error(f"Invalid mt5_ticket: {mt5_ticket}")
+                    return False
+            except (ValueError, TypeError) as e:
+                logger.error(f"Invalid mt5_ticket type: {e}")
+                return False
         
         # symbolチェック（空文字でないこと）
         if not order_data['symbol'] or not isinstance(order_data['symbol'], str):

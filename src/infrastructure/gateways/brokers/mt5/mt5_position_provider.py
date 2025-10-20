@@ -168,6 +168,18 @@ class MT5PositionProvider:
             >>> success, error = provider.close_position(12345678, volume=0.05)
         """
         try:
+            # Kill Switch確認
+            from src.infrastructure.di.container import container
+            try:
+                kill_switch_repo = container.get_kill_switch_repository()
+                if kill_switch_repo.is_active():
+                    error_msg = "Kill Switch is active - position close blocked"
+                    logger.warning(error_msg)
+                    return False, error_msg
+            except Exception as e:
+                logger.warning(f"Kill Switch check failed: {e}")
+                # Kill Switch確認失敗は警告のみ（決済は継続）
+            
             if not self.connection.ensure_connected():
                 error_msg = "MT5 connection not available"
                 logger.error(error_msg)

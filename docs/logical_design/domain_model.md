@@ -778,23 +778,100 @@ classDiagram
 
 | ドメインオブジェクト | 実装済み | 実装場所 | 備考 |
 |---------------------|----------|----------|------|
-| **Order Entity** | ✅ | `src/domain/entities/order.py` | 基本実装完了 |
-| **Position Entity** | ❌ | 未実装 | 設計完了、実装待ち |
-| **Signal Entity** | ❌ | 未実装 | 設計完了、実装待ち |
+| **Order Entity** | ✅ | `src/domain/entities/order.py` | Repository Pattern完全実装 |
+| **Position Entity** | ✅ | `src/domain/entities/position.py` | ✅ 実装完了（2025-10-19） |
+| **Signal Entity** | ❌ | 未実装 | Phase 3実装予定 |
 | **Money VO** | ❌ | 未実装 | Decimal型で代用中 |
 | **Price VO** | ❌ | 未実装 | float型で代用中 |
 | **OrderValidationService** | ✅ | `src/domain/services/order_validation.py` | 基本実装完了 |
-| **TradingAggregate** | ❌ | 未実装 | 設計完了、実装待ち |
+| **TradingAggregate** | ❌ | 未実装 | Phase 3実装予定 |
 
-### B. 次期実装優先度
+### B. Domain統合完了 & 次期実装計画
 
-| 優先度 | ドメインオブジェクト | 理由 |
-|--------|---------------------|------|
-| **High** | Position Entity | 現在実装中の機能に必要 |
-| **High** | Money/Price VO | 型安全性向上のため |
-| **Medium** | Signal Entity | シグナル統合機能実装時 |
-| **Medium** | TradingAggregate | ビジネスルール保証のため |
-| **Low** | ドメインイベント | 拡張機能実装時 |
+#### **B.1 完了したDomain統合（✅ 2025-10-19）**
+
+| 実装項目 | 状態 | ファイル | 機能 |
+|---------|------|---------|------|
+| **Position Entity** | ✅ 完了 | `src/domain/entities/position.py` | Domain層での型安全なPosition表現 |
+| **IPositionRepository** | ✅ 完了 | `src/domain/repositories/position_repository.py` | Repository Pattern Interface |
+| **DynamoDBPositionRepository** | ✅ 完了 | `src/infrastructure/persistence/dynamodb/dynamodb_position_repository.py` | GSI1活用、楽観的ロック |
+| **SQS統一アーキテクチャ** | ✅ 完了 | `ProcessSQSOrderUseCase`, `SQSOrderPublisher` | CLOSE注文対応 |
+| **UI統合** | ✅ 完了 | `src/presentation/ui/streamlit/pages/position_page.py` | SQS経由決済 |
+
+#### **B.2 次期実装優先度（Phase 3+）**
+
+| 優先度 | ドメインオブジェクト | 実装理由 | 予定実装時期 |
+|--------|---------------------|---------|-------------|
+| **High** | Order ↔ Position 関連付け | 完全な監査証跡 | Phase 3前期 |
+| **High** | Money/Price VO | 型安全性向上 | Phase 3前期 |
+| **Medium** | TradingAggregate | ビジネスルール統合 | Phase 3後期 |
+| **Medium** | Signal Entity | シグナル統合基盤 | Phase 3後期 |
+| **Low** | PositionDomainService | 高度な計算ロジック | Phase 3後期 |
+
+#### **B.2 Phase 3 Domain統合設計**
+
+```python
+# Phase 3で実装予定のDomain統合
+class Position:  # Domain Entity
+    position_id: str
+    mt5_ticket: int
+    order_id: str  # Order Entityとの関連
+    symbol: str
+    # ...
+
+class IPositionRepository(ABC):  # Repository Interface
+    @abstractmethod
+    async def find_open_positions(self) -> List[Position]: pass
+    @abstractmethod
+    async def find_by_mt5_ticket(self, ticket: int) -> Optional[Position]: pass
+    
+class DynamoDBPositionRepository(IPositionRepository):  # Repository Implementation
+    # GSI1（OPEN_POSITIONS）活用
+    
+class PositionCloseUseCase:  # Application UseCase
+    def execute(self, close_command: ClosePositionCommand) -> bool:
+        # SQS経由でアーキテクチャ統一
+        
+# UI層の変更
+def _close_position(ticket: int):
+    # Provider直接呼び出し → UseCase経由
+    use_case = container.get_position_close_use_case()
+    command = ClosePositionCommand(mt5_ticket=ticket)
+    use_case.execute(command)
+```
+
+#### **B.3 段階的移行計画**
+
+```mermaid
+graph LR
+    subgraph "Current (Week 4)"
+        ProviderDirect[UI → MT5Provider直接]
+    end
+    
+    subgraph "Phase 3-1"
+        DomainEntity[Position Entity実装]
+        RepositoryImpl[Repository実装]
+    end
+    
+    subgraph "Phase 3-2"
+        SQSUnified[SQS統一アーキテクチャ]
+        OrderPosLink[Order ↔ Position関連]
+    end
+    
+    subgraph "Phase 3-3"
+        FullClean[完全Clean Architecture]
+    end
+    
+    ProviderDirect --> DomainEntity
+    DomainEntity --> SQSUnified
+    SQSUnified --> FullClean
+    
+    classDef current fill:#e8f5e8,color:#000
+    classDef phase3 fill:#fff3e0,color:#000
+    
+    class ProviderDirect current
+    class DomainEntity,RepositoryImpl,SQSUnified,OrderPosLink,FullClean phase3
+```
 
 ---
 

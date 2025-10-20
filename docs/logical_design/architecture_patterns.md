@@ -850,12 +850,14 @@ AXIAでは、Infrastructure層のクラス命名に以下のSuffixルールを�
 
 ### B. 実装予定パターン
 
-| パターン | 実装予定場所 | 優先度 |
-|---------|-------------|-------|
-| **Domain Events** | `src/domain/events/` | Medium |
-| **Event Sourcing** | `src/infrastructure/events/` | Low |
-| **CQRS** | `src/application/queries/` | Low |
-| **Saga Pattern** | `src/application/workflows/` | Low |
+| パターン | 実装予定場所 | 優先度 | 実装時期 |
+|---------|-------------|-------|---------|
+| **Position Domain Integration** | `src/domain/entities/position.py` | High | Phase 3 |
+| **Repository Pattern (Position)** | `src/domain/repositories/position_repository.py` | High | Phase 3 |
+| **SQS Unified Architecture** | `src/application/use_cases/order_processing/` | High | Phase 3 |
+| **Domain Events** | `src/domain/events/` | Medium | Phase 3+ |
+| **Event Sourcing** | `src/infrastructure/events/` | Low | Phase 4 |
+| **CQRS** | `src/application/queries/` | Low | Phase 4 |
 
 ### C. アンチパターンの回避
 
