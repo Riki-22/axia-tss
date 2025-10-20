@@ -13,6 +13,12 @@ def render_position_page():
     """ポジション管理ページのレンダリング"""
     st.markdown("#### 💹 ポジション管理")
     
+    # セッション状態初期化
+    if 'selected_position_ticket' not in st.session_state:
+        st.session_state.selected_position_ticket = None
+    if 'position_action_result' not in st.session_state:
+        st.session_state.position_action_result = None
+    
     # MT5PositionProviderとMT5AccountProviderを取得
     try:
         position_provider = container.get_mt5_position_provider()
@@ -21,6 +27,14 @@ def render_position_page():
         st.error("⚠️ MT5サービスの初期化に失敗しました")
         logger.error(f"Failed to initialize MT5 services: {e}")
         return
+    
+    # アクション結果の表示
+    if st.session_state.position_action_result:
+        if st.session_state.position_action_result['success']:
+            st.success(st.session_state.position_action_result['message'])
+        else:
+            st.error(st.session_state.position_action_result['message'])
+        st.session_state.position_action_result = None
     
     # ページ構成
     _render_position_summary(position_provider, account_provider)
@@ -146,6 +160,7 @@ def _render_active_positions(position_provider):
         hide_index=True,
         on_select="rerun",
         selection_mode="single-row",
+        key="position_table",
         column_config={
             'チケット': st.column_config.TextColumn('チケット', width="small"),
             '通貨ペア': st.column_config.TextColumn('通貨ペア', width="small"),
@@ -164,7 +179,19 @@ def _render_active_positions(position_provider):
     if event.selection.rows:
         selected_idx = event.selection.rows[0]
         selected_position_data = positions[selected_idx]  # 元のMT5データを使用
+        
+        # セッション状態に選択ポジション保存
+        st.session_state.selected_position_ticket = selected_position_data['ticket']
+        
         _render_position_actions(selected_position_data, position_provider)
+    elif st.session_state.selected_position_ticket:
+        # 前回選択されたポジションを維持
+        selected_pos = next(
+            (pos for pos in positions if pos['ticket'] == st.session_state.selected_position_ticket),
+            None
+        )
+        if selected_pos:
+            _render_position_actions(selected_pos, position_provider)
 
 
 def _render_position_actions(position_data: Dict, position_provider):
@@ -211,11 +238,13 @@ def _render_position_actions(position_data: Dict, position_provider):
     action_cols = st.columns(6)
     
     with action_cols[0]:
-        if st.button("🔄 更新", width=120, key=f"refresh_{position_data['ticket']}"):
+        if st.button("🔄 更新", key=f"refresh_{position_data['ticket']}"):
+            # 選択状態を維持したまま更新
             st.rerun()
     
     with action_cols[1]:
-        if st.button("50%決済", width=120, key=f"partial50_{position_data['ticket']}"):
+        if st.button("50%決済", key=f"partial50_{position_data['ticket']}"):
+            # 即座実行
             _partial_close_position(
                 position_data['ticket'],
                 position_data['volume'] * 0.5,
@@ -223,39 +252,60 @@ def _render_position_actions(position_data: Dict, position_provider):
             )
     
     with action_cols[2]:
-        if st.button("部分決済", width=120, key=f"partial_{position_data['ticket']}"):
-            _show_partial_close_dialog(position_data, position_provider)
+        # 部分決済ダイアログトグル
+        dialog_key = f"show_partial_dialog_{position_data['ticket']}"
+        if dialog_key not in st.session_state:
+            st.session_state[dialog_key] = False
+        
+        if st.button("部分決済", key=f"partial_{position_data['ticket']}"):
+            st.session_state[dialog_key] = not st.session_state[dialog_key]
+            st.rerun()
     
     with action_cols[3]:
         # Phase 2実装予定
-        st.button("✏️ TP変更", width=120, disabled=True, key=f"tp_{position_data['ticket']}")
+        st.button("✏️ TP変更", disabled=True, key=f"tp_{position_data['ticket']}")
     
     with action_cols[4]:
         # Phase 2実装予定  
-        st.button("✏️ SL変更", width=120, disabled=True, key=f"sl_{position_data['ticket']}")
+        st.button("✏️ SL変更", disabled=True, key=f"sl_{position_data['ticket']}")
     
     with action_cols[5]:
-        if st.button("❌ 全決済", width=120, type="primary", key=f"close_{position_data['ticket']}"):
+        if st.button("❌ 全決済", type="primary", key=f"close_{position_data['ticket']}"):
             _close_position(position_data['ticket'], position_provider)
+    
+    # 部分決済ダイアログ表示
+    dialog_key = f"show_partial_dialog_{position_data['ticket']}"
+    if st.session_state.get(dialog_key, False):
+        _show_partial_close_dialog(position_data, position_provider)
 
 
 def _partial_close_position(ticket: int, volume: float, position_provider):
-    """部分決済実行"""
-    with st.spinner(f'ポジション #{ticket} を {volume} ロット決済中...'):
-        try:
-            success, error = position_provider.close_position(ticket, volume=volume)
-            
-            if success:
-                st.success(f"✅ ポジション #{ticket} の {volume} ロットを決済しました")
-                logger.info(f"Partial close successful: {ticket}, volume={volume}")
-                st.rerun()
-            else:
-                st.error(f"❌ 部分決済に失敗しました: {error}")
-                logger.error(f"Partial close failed: {ticket}, error={error}")
-                
-        except Exception as e:
-            st.error(f"❌ 部分決済エラー: {str(e)}")
-            logger.error(f"Exception during partial close: {e}", exc_info=True)
+    """部分決済実行（セッション状態管理改善）"""
+    try:
+        success, error = position_provider.close_position(ticket, volume=volume)
+        
+        if success:
+            st.session_state.position_action_result = {
+                'success': True,
+                'message': f"✅ ポジション #{ticket} の {volume} ロットを決済しました"
+            }
+            logger.info(f"Partial close successful: {ticket}, volume={volume}")
+        else:
+            st.session_state.position_action_result = {
+                'success': False,
+                'message': f"❌ 部分決済に失敗しました: {error}"
+            }
+            logger.error(f"Partial close failed: {ticket}, error={error}")
+        
+        st.rerun()
+        
+    except Exception as e:
+        st.session_state.position_action_result = {
+            'success': False,
+            'message': f"❌ 部分決済エラー: {str(e)}"
+        }
+        logger.error(f"Exception during partial close: {e}", exc_info=True)
+        st.rerun()
 
 
 def _show_partial_close_dialog(position_data: Dict, position_provider):
@@ -278,30 +328,58 @@ def _show_partial_close_dialog(position_data: Dict, position_provider):
         col1, col2 = st.columns(2)
         with col1:
             if st.form_submit_button("💰 部分決済実行", type="primary"):
-                _partial_close_position(position_data['ticket'], volume, position_provider)
+                # フォーム外の関数を使用
+                st.session_state.partial_close_ticket = position_data['ticket']
+                st.session_state.partial_close_volume = volume
+                st.rerun()
         
         with col2:
             if st.form_submit_button("❌ キャンセル"):
                 st.rerun()
+    
+    # フォーム外で実際の決済処理
+    if hasattr(st.session_state, 'partial_close_ticket') and st.session_state.partial_close_ticket:
+        ticket = st.session_state.partial_close_ticket
+        volume = st.session_state.partial_close_volume
+        
+        # 状態クリア
+        st.session_state.partial_close_ticket = None
+        st.session_state.partial_close_volume = None
+        
+        # 決済実行
+        _partial_close_position(ticket, volume, position_provider)
 
 
 def _close_position(ticket: int, position_provider):
-    """全決済実行"""
-    with st.spinner(f'ポジション #{ticket} を全決済中...'):
-        try:
-            success, error = position_provider.close_position(ticket)
-            
-            if success:
-                st.success(f"✅ ポジション #{ticket} を決済しました")
-                logger.info(f"Position closed successfully: {ticket}")
-                st.rerun()
-            else:
-                st.error(f"❌ ポジション決済に失敗しました: {error}")
-                logger.error(f"Position close failed: {ticket}, error={error}")
-                
-        except Exception as e:
-            st.error(f"❌ 決済エラー: {str(e)}")
-            logger.error(f"Exception during position close: {e}", exc_info=True)
+    """全決済実行（セッション状態管理改善）"""
+    try:
+        success, error = position_provider.close_position(ticket)
+        
+        if success:
+            # セッション状態に結果を保存
+            st.session_state.position_action_result = {
+                'success': True,
+                'message': f"✅ ポジション #{ticket} を決済しました"
+            }
+            logger.info(f"Position closed successfully: {ticket}")
+        else:
+            st.session_state.position_action_result = {
+                'success': False,
+                'message': f"❌ ポジション決済に失敗しました: {error}"
+            }
+            logger.error(f"Position close failed: {ticket}, error={error}")
+        
+        # 選択状態をクリア
+        st.session_state.selected_position_ticket = None
+        st.rerun()
+        
+    except Exception as e:
+        st.session_state.position_action_result = {
+            'success': False,
+            'message': f"❌ 決済エラー: {str(e)}"
+        }
+        logger.error(f"Exception during position close: {e}", exc_info=True)
+        st.rerun()
 
 
 def _render_trade_history(account_provider = None):
