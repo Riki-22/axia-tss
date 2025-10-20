@@ -195,8 +195,8 @@ def _render_position_actions(position_data: Dict, position_provider):
             - 損益（円）: `¥{position_data['profit']:+,.0f}`
             - 損益（pips）: `{position_data['profit_pips']:+.1f} pips`
             - スワップ: `¥{position_data['swap']:+,.2f}`
-            - TP: `{position_data['tp']:.5f if position_data['tp'] > 0 else 'なし'}`
-            - SL: `{position_data['sl']:.5f if position_data['sl'] > 0 else 'なし'}`
+            - TP: `{position_data['tp']:.5f}` if position_data['tp'] > 0 else 'なし'
+            - SL: `{position_data['sl']:.5f}` if position_data['sl'] > 0 else 'なし'
             """)
         
         st.caption(f"オープン時刻: {position_data['time'].strftime('%Y-%m-%d %H:%M:%S UTC')}")
@@ -207,11 +207,11 @@ def _render_position_actions(position_data: Dict, position_provider):
     action_cols = st.columns(6)
     
     with action_cols[0]:
-        if st.button("🔄 更新", use_container_width=True, key=f"refresh_{position_data['ticket']}"):
+        if st.button("🔄 更新", width=120, key=f"refresh_{position_data['ticket']}"):
             st.rerun()
     
     with action_cols[1]:
-        if st.button("50%決済", use_container_width=True, key=f"partial50_{position_data['ticket']}"):
+        if st.button("50%決済", width=120, key=f"partial50_{position_data['ticket']}"):
             _partial_close_position(
                 position_data['ticket'],
                 position_data['volume'] * 0.5,
@@ -219,19 +219,19 @@ def _render_position_actions(position_data: Dict, position_provider):
             )
     
     with action_cols[2]:
-        if st.button("部分決済", use_container_width=True, key=f"partial_{position_data['ticket']}"):
+        if st.button("部分決済", width=120, key=f"partial_{position_data['ticket']}"):
             _show_partial_close_dialog(position_data, position_provider)
     
     with action_cols[3]:
         # Phase 2実装予定
-        st.button("✏️ TP変更", use_container_width=True, disabled=True, key=f"tp_{position_data['ticket']}")
+        st.button("✏️ TP変更", width=120, disabled=True, key=f"tp_{position_data['ticket']}")
     
     with action_cols[4]:
         # Phase 2実装予定  
-        st.button("✏️ SL変更", use_container_width=True, disabled=True, key=f"sl_{position_data['ticket']}")
+        st.button("✏️ SL変更", width=120, disabled=True, key=f"sl_{position_data['ticket']}")
     
     with action_cols[5]:
-        if st.button("❌ 全決済", use_container_width=True, type="primary", key=f"close_{position_data['ticket']}"):
+        if st.button("❌ 全決済", width=120, type="primary", key=f"close_{position_data['ticket']}"):
             _close_position(position_data['ticket'], position_provider)
 
 
