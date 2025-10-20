@@ -154,7 +154,7 @@ def _render_signal_analysis():
     symbol = st.session_state.get('signal_chart_symbol', 'USDJPY')
     timeframe = st.session_state.get('signal_chart_timeframe', 'H1')
     
-    st.markdown(f"####  {symbol} {timeframe} シグナル分析")
+    st.markdown(f"#### ⚡ {symbol} {timeframe} シグナル分析")
     
     # シグナル設定（1列レイアウト）
     st.markdown("##### 🔧 シグナル設定")
