@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 def render_signal_page():
     """シグナル分析ページのレンダリング（チャート+シグナル統合）"""
-    st.markdown("#### 📊 シグナル分析")
-    
     # チャート設定エリア
     _render_chart_controls()
     
@@ -133,20 +131,20 @@ def _render_data_source_info(metadata: dict, symbol: str, timeframe: str):
             's3': '📦 S3',
             'yfinance': '🌐 yfinance'
         }
-        st.caption(f"📊 データソース: {source_icons.get(source, source)}")
+        st.caption(f"データソース: {source_icons.get(source, source)}")
     
     with info_cols[1]:
         response_time = metadata.get('response_time', 0)
-        st.caption(f"⏱️ 取得時間: {response_time:.3f}秒")
+        st.caption(f"取得時間: {response_time:.3f}秒")
     
     with info_cols[2]:
         row_count = metadata.get('row_count', 0)
-        st.caption(f"📈 データ数: {row_count:,}行")
+        st.caption(f"データ数: {row_count:,}行")
     
     with info_cols[3]:
         cache_hit = metadata.get('cache_hit', False)
         cache_status = "ヒット" if cache_hit else "ミス"
-        st.caption(f"💾 キャッシュ: {cache_status}")
+        st.caption(f"キャッシュ: {cache_status}")
 
 
 def _render_signal_analysis():
@@ -156,27 +154,27 @@ def _render_signal_analysis():
     symbol = st.session_state.get('signal_chart_symbol', 'USDJPY')
     timeframe = st.session_state.get('signal_chart_timeframe', 'H1')
     
-    st.markdown(f"#### 📊 {symbol} {timeframe} シグナル分析")
+    st.markdown(f"####  {symbol} {timeframe} シグナル分析")
     
     # シグナル設定（1列レイアウト）
-    st.markdown("##### 🔧 シグナル設定")
+    st.markdown("#####  シグナル設定")
     
     # シグナル表示オプション（横並び）
     signal_option_cols = st.columns(4)
     with signal_option_cols[0]:
-        show_trend = st.checkbox("📈 トレンド", value=True, key="show_trend_signals")
+        show_trend = st.checkbox("トレンド", value=True, key="show_trend_signals")
     with signal_option_cols[1]:
-        show_oscillator = st.checkbox("📊 オシレーター", value=True, key="show_oscillator_signals")
+        show_oscillator = st.checkbox("オシレーター", value=True, key="show_oscillator_signals")
     with signal_option_cols[2]:
-        show_volatility = st.checkbox("💨 ボラティリティ", value=True, key="show_volatility_signals")
+        show_volatility = st.checkbox("ボラティリティ", value=True, key="show_volatility_signals")
     with signal_option_cols[3]:
-        show_patterns = st.checkbox("🔍 パターン", value=True, key="show_pattern_signals")
+        show_patterns = st.checkbox("パターン", value=True, key="show_pattern_signals")
     
     # シグナル感度
     sensitivity = st.slider("シグナル感度", 1, 10, 5, key="signal_sensitivity")
     
     # シグナル詳細表示
-    st.markdown("##### 📋 検出シグナル")
+    st.markdown("##### 検出シグナル")
     _render_signal_list(symbol, timeframe, {
         'trend': show_trend,
         'oscillator': show_oscillator,
@@ -197,35 +195,35 @@ def _render_signal_list(symbol: str, timeframe: str, signal_config: dict):
     
     with signal_display_cols[0]:
         if signal_config['trend']:
-            st.markdown("**📈 トレンド系シグナル**")
-            st.success("✅ MACD: BUYシグナル")
-            st.info("📊 移動平均: 上昇トレンド")
+            st.markdown("**トレンド系シグナル**")
+            st.success("MACD: BUYシグナル")
+            st.info("移動平均: 上昇トレンド")
             st.warning("⚠️ ブレイクアウト: 監視中") 
             st.success("✅ トレンド強度: 強")
             st.markdown("---")
         
         if signal_config['volatility']:
-            st.markdown("**💨 ボラティリティ系シグナル**")
+            st.markdown("**ボラティリティ系シグナル**")
             st.success("✅ ボリンジャー: 下部反発")
-            st.info("📊 ATR: 0.0045 (標準)")
+            st.info("ATR: 0.0045 (標準)")
             st.success("✅ ボラティリティ: 拡大中")
             st.warning("⚠️ スクイーズ: 解除")
     
     with signal_display_cols[1]:
         if signal_config['oscillator']:
-            st.markdown("**📊 オシレーター系シグナル**")
+            st.markdown("**オシレーター系シグナル**")
             st.warning("⚠️ RSI: 中立圏 (55)")
             st.success("✅ Stochastic: BUYゾーン")
             st.error("❌ RCI: SELLシグナル")
-            st.info("📊 モメンタム: 弱気")
+            st.info("モメンタム: 弱気")
             st.markdown("---")
         
         if signal_config['patterns']:
-            st.markdown("**🔍 チャートパターン**")
+            st.markdown("**チャートパターン**")
             st.success("✅ ピンバー: 反転シグナル")
-            st.info("📊 エンガルフィング: 未検出")
+            st.info("エンガルフィング: 未検出")
             st.success("✅ サポート/レジスタンス: 150.65")
-            st.info("📊 フィボナッチ: 61.8%水準")
+            st.info("フィボナッチ: 61.8%水準")
     
     # 統合シグナル
     st.markdown("---")
