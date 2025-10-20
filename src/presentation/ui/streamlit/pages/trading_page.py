@@ -10,6 +10,9 @@ from src.infrastructure.di.container import DIContainer
 # Streamlit/Plotly警告を抑制
 warnings.filterwarnings('ignore', message='.*use_container_width.*')
 warnings.filterwarnings('ignore', message='.*keyword arguments have been deprecated.*')
+warnings.filterwarnings('ignore', message='.*will be removed in a future release.*')
+warnings.filterwarnings('ignore', category=FutureWarning, module='plotly')
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 logger = logging.getLogger(__name__)
 container = DIContainer()
@@ -379,8 +382,8 @@ def _render_chart_display(df, symbol, timeframe, days):
         )
         st.plotly_chart(
             fig,
-            config={'displayModeBar': False},
-            width="stretch"
+            use_container_width=True,
+            config={'displayModeBar': False}
         )
     except Exception as e:
         st.error(f"チャート表示エラー: {e}")

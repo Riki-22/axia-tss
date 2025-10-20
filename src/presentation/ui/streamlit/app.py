@@ -14,11 +14,18 @@ logging.basicConfig(
 # Plotly警告を抑制（UIに表示させない）
 import warnings
 warnings.filterwarnings('ignore', message='.*keyword arguments have been deprecated.*')
+warnings.filterwarnings('ignore', message='.*will be removed in a future release.*')
+warnings.filterwarnings('ignore', category=FutureWarning, module='plotly')
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', module='plotly')
 
 # StreamlitでPlotly警告を非表示
 import plotly.io as pio
 pio.templates.default = "plotly"
+
+# Streamlit設定で警告抑制
+import os
+os.environ['STREAMLIT_LOGGER_LEVEL'] = 'ERROR'
 
 from pathlib import Path
 from dotenv import load_dotenv
