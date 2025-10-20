@@ -171,10 +171,10 @@ class SQSOrderPublisher:
                 return False
         
         # order_actionチェック
-        if order_data['order_action'] not in ['BUY', 'SELL']:
+        if order_data['order_action'] not in ['BUY', 'SELL', 'CLOSE']:
             logger.error(
                 f"Invalid order_action: {order_data['order_action']}. "
-                f"Must be 'BUY' or 'SELL'"
+                f"Must be 'BUY', 'SELL', or 'CLOSE'"
             )
             return False
         
