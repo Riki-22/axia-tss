@@ -11,6 +11,15 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
+# Plotly警告を抑制（UIに表示させない）
+import warnings
+warnings.filterwarnings('ignore', message='.*keyword arguments have been deprecated.*')
+warnings.filterwarnings('ignore', module='plotly')
+
+# StreamlitでPlotly警告を非表示
+import plotly.io as pio
+pio.templates.default = "plotly"
+
 from pathlib import Path
 from dotenv import load_dotenv
 

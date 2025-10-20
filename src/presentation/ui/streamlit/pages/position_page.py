@@ -3,8 +3,13 @@
 import streamlit as st
 import pandas as pd
 import logging
+import warnings
 from typing import Dict, List, Optional
 from src.infrastructure.di.container import container
+
+# Streamlit/Plotly警告を抑制
+warnings.filterwarnings('ignore', message='.*use_container_width.*')
+warnings.filterwarnings('ignore', message='.*keyword arguments have been deprecated.*')
 
 logger = logging.getLogger(__name__)
 

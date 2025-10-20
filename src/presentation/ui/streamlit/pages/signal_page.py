@@ -2,8 +2,12 @@
 
 import streamlit as st
 import logging
+import warnings
 from components.trading_charts.price_chart import PriceChartComponent
 from components.trading_charts.chart_data_source import get_chart_data_source
+
+# Plotly警告を抑制
+warnings.filterwarnings('ignore', message='.*keyword arguments have been deprecated.*')
 
 logger = logging.getLogger(__name__)
 

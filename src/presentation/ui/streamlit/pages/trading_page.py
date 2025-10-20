@@ -2,9 +2,14 @@
 
 import streamlit as st
 import logging
+import warnings
 from components.trading_charts.price_chart import PriceChartComponent
 from components.trading_charts.chart_data_source import get_chart_data_source
 from src.infrastructure.di.container import DIContainer
+
+# Streamlit/Plotly警告を抑制
+warnings.filterwarnings('ignore', message='.*use_container_width.*')
+warnings.filterwarnings('ignore', message='.*keyword arguments have been deprecated.*')
 
 logger = logging.getLogger(__name__)
 container = DIContainer()
