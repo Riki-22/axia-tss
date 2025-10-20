@@ -190,13 +190,17 @@ def _render_position_actions(position_data: Dict, position_provider):
             """)
         
         with detail_cols[1]:
+            # TP/SL表示用の値を事前計算
+            tp_display = f"{position_data['tp']:.5f}" if position_data['tp'] > 0 else 'なし'
+            sl_display = f"{position_data['sl']:.5f}" if position_data['sl'] > 0 else 'なし'
+            
             st.markdown(f"""
             **損益情報**:
             - 損益（円）: `¥{position_data['profit']:+,.0f}`
             - 損益（pips）: `{position_data['profit_pips']:+.1f} pips`
             - スワップ: `¥{position_data['swap']:+,.2f}`
-            - TP: `{position_data['tp']:.5f}` if position_data['tp'] > 0 else 'なし'
-            - SL: `{position_data['sl']:.5f}` if position_data['sl'] > 0 else 'なし'
+            - TP: `{tp_display}`
+            - SL: `{sl_display}`
             """)
         
         st.caption(f"オープン時刻: {position_data['time'].strftime('%Y-%m-%d %H:%M:%S UTC')}")
