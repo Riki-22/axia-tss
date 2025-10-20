@@ -150,6 +150,8 @@ Python Packages:
 
 ### 2.3 タスクスケジューラ設定（実装済み）
 
+**重要**: 全タスクはUTCベースで設定され、Windows Server 2022のタイムゾーンもUTCに統一設定済み
+
 ```xml
 <!-- AXIA_Streamlit Task -->
 <Task version="1.2">
@@ -158,7 +160,7 @@ Python Packages:
   </RegistrationInfo>
   <Triggers>
     <BootTrigger>
-      <StartBoundary>2025-01-01T00:00:00</StartBoundary>
+      <StartBoundary>2025-01-01T00:00:00Z</StartBoundary>  <!-- UTC時刻 -->
       <Delay>PT5M</Delay>  <!-- 5分遅延 -->
       <Enabled>true</Enabled>
     </BootTrigger>
@@ -192,12 +194,19 @@ Python Packages:
 
 ### 2.4 プロセス管理（実装済み）
 
+**タイムゾーン設定**: 全システムUTC統一（Windows Server タイムゾーン: UTC）
+
 | プロセス | 実行ファイル | 起動トリガー | 実行ユーザー | 状態 |
 |---------|-------------|-------------|-------------|------|
 | **Streamlit UI** | streamlit.exe | システム起動（5分遅延） | SYSTEM | ✅ 稼働中 |
 | **Order Manager** | python.exe | システム起動 | SYSTEM | ✅ 稼働中 |
-| **Data Collector** | python.exe | 毎日 07:00 JST | SYSTEM | ✅ 設定済み |
+| **Data Collector** | python.exe | 毎日 22:00 UTC (= 07:00 JST翌日) | SYSTEM | ✅ 設定済み |
 | **MetaTrader 5** | terminal64.exe | システム起動 | Administrator | ✅ 稼働中 |
+
+#### Data Collector実行スケジュール（UTC基準）
+- **月-金 22:00 UTC** = 火-土 07:00 JST
+- **週末実行なし**: 土日はFX市場クローズのため
+- **NYクローズ後**: UTC 21:00がNYクローズ、22:00でデータ確定
 
 ---
 

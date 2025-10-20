@@ -364,9 +364,15 @@ def calculate_ttl_until_ny_close(self) -> int:
     
     return int((ny_close - now).total_seconds())
 
-# TTL設定例:
-# 平日15:00 → 7時間後（22:00まで）
-# 金曜23:00 → 70時間後（月曜21:00まで）
+# TTL設定例（UTC統一）:
+# 平日 UTC 15:00 → 7時間後（UTC 22:00 = NYクローズ翌日まで）
+# 金曜 UTC 23:00 → 70時間後（月曜 UTC 21:00 = NYクローズまで）
+
+# 重要: タイムゾーン統一設計
+# - Windows Server: UTC タイムゾーン設定済み
+# - Python: datetime.now(timezone.utc)で統一
+# - Task Scheduler: UTC基準（22:00 UTC = 07:00 JST翌日）
+# - ログ出力: UTC明記（例: [2025-10-19 14:30:45 UTC]）
 ```
 
 ### 3.3 メモリ使用量管理（実装済み）

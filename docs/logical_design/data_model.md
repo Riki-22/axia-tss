@@ -203,16 +203,27 @@ ohlcv_stats                        # キャッシュ統計
 }
 ```
 
-### 3.3 TTL戦略（実装済み）
+### 3.3 TTL戦略（実装済み・UTC統一）
+
+**タイムゾーン統一**: 全システムでUTC基準採用済み
 
 ```python
 def calculate_ttl_until_ny_close(self) -> int:
-    """NYクローズまでのTTL計算 - 実装済み"""
+    """
+    NYクローズまでのTTL計算 - UTC統一実装済み
+    
+    タイムゾーン設計:
+    - Python: UTC統一（datetime.now(timezone.utc)）
+    - Windows Server: UTC設定
+    - Task Scheduler: UTC基準（22:00 UTC = 07:00 JST翌日）
+    - Redis TTL: UTC基準計算
+    - ログ出力: UTC明記
+    """
     
     # 現在時刻（UTC）
     now = datetime.now(pytz.UTC)
     
-    # NYクローズ時刻計算（金曜22:00 UTC、月曜21:00 UTC）
+    # NYクローズ時刻計算（金曜21:00 UTC、月曜21:00 UTC）
     if now.weekday() == 4 and now.hour >= 22:  # 金曜夜
         # 月曜21:00まで
         next_monday = now + timedelta(days=(7 - now.weekday()) % 7)

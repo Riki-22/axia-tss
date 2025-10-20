@@ -98,6 +98,7 @@ Demo Environment:
   Instance: EC2 t3.small (Windows Server 2022)
   Python: 3.11.6
   Dependencies: requirements.txt
+  Timezone: UTC (統一設定)
   
   AWS Services (Real):
     DynamoDB: TSS_DynamoDB_OrderState
@@ -112,6 +113,12 @@ Demo Environment:
     AWS_MOCK_MODE: false
     MT5_DEMO_MODE: true
     REDIS_HOST: axia-redis-cache.xxxxx.cache.amazonaws.com
+    
+  Time Settings:
+    Windows Timezone: UTC
+    Task Scheduler: UTC based
+    Python Code: UTC (datetime.now(timezone.utc))
+    Logs: UTC timestamp format
 ```
 
 ### 2.3 本番環境（将来）

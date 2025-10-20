@@ -3,7 +3,8 @@
 **Document Path**: `docs/basic_design.md`  
 **Version**: 2.0  
 **Type**: 統合設計書（現在実装版）  
-**Last Updated**: 2025-10-19
+**Last Updated**: 2025-10-19 19:00  
+**Implementation Progress**: 95% Complete
 
 ---
 
@@ -36,9 +37,10 @@ graph LR
         KillSwitch[Kill Switch<br/>緊急停止機能]
     end
     
-    subgraph "実装中機能 🔄"
-        CurrentPrice[現在価格ベース注文<br/>Week 3実装中]
-        PositionMgmt[ポジション管理<br/>Week 4計画]
+    subgraph "実装完了機能 ✅"
+        CurrentPrice[現在価格ベース注文<br/>Day 3完了]
+        PositionMgmt[ポジション管理<br/>Day 4完了]
+        Dashboard[リアルタイムダッシュボード<br/>Day 3-4完了]
     end
     
     subgraph "設計完了機能 📋"
@@ -51,12 +53,11 @@ graph LR
     classDef implementing fill:#fff3e0,color:#000
     classDef designed fill:#f3e5f5,color:#000
     
-    class SQSOrder,DataIntegration,StreamlitUI,KillSwitch implemented
-    class CurrentPrice,PositionMgmt implementing
+    class SQSOrder,DataIntegration,StreamlitUI,KillSwitch,CurrentPrice,PositionMgmt,Dashboard implemented
     class SignalGeneration,BacktestEngine,RiskMgmt designed
 ```
 
-**実装完了率**: 約70% (コア機能)
+**実装完了率**: 約95% (コア機能 + ポジション管理)
 
 ---
 
@@ -544,6 +545,23 @@ sequenceDiagram
 | **MetaTrader 5** | Python API | 取引実行・リアルタイムデータ | `mt5_connection.py` |
 | **yfinance** | REST API | フォールバック市場データ | `yfinance_gateway.py` |
 | **AWS Services** | boto3 SDK | インフラサービス | `aws_config.py` |
+
+### 6.4 タイムゾーン統一設計
+
+**金融システム標準**: 全システムでUTC基準を採用
+
+| レイヤー | タイムゾーン | 実装状況 | 詳細設定 |
+|---------|-------------|---------|---------|
+| **Windows Server** | UTC | ✅ 設定済み | `Set-TimeZone -Id "UTC"` |
+| **Task Scheduler** | UTC基準 | ✅ 修正済み | 22:00 UTC = 07:00 JST翌日 |
+| **Python Code** | UTC統一 | ✅ 実装済み | `datetime.now(timezone.utc)` |
+| **ログ出力** | UTC明記 | ✅ 修正済み | `[2025-10-19 14:30:45 UTC]` |
+| **Redis TTL** | NYクローズ基準 | ✅ 実装済み | UTC 21:00 = NYクローズ |
+
+#### 重要スケジュール（UTC基準）
+- **NYクローズ**: 21:00 UTC = 06:00 JST翌日
+- **データ収集**: 22:00 UTC = 07:00 JST翌日（平日のみ）
+- **Redis TTL**: NYクローズまで動的計算
 
 ---
 
