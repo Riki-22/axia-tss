@@ -384,8 +384,8 @@ class S3OhlcvDataRepository(IOhlcvDataRepository):
                 f"for {symbol}/{timeframe}"
             )
             
-            # インデックスをリセットしてカラムに戻す
-            return full_df.reset_index()
+            # timestamp_utcをインデックスとして保持（Redis互換性のため）
+            return full_df
             
         except Exception as e:
             logger.error(

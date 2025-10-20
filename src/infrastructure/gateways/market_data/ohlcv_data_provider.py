@@ -326,7 +326,7 @@ class OhlcvDataProvider:
                 return None
                 
         except Exception as e:
-            logger.error(f"Error fetching from Redis: {e}", exc_info=True)
+            logger.error(f"Error fetching from Redis {symbol} {timeframe}: {e}", exc_info=True)
             return None
     
     def _fetch_from_mt5(
