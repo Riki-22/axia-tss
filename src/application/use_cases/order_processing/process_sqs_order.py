@@ -2,7 +2,8 @@
 import json
 import logging
 import MetaTrader5 as mt5
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,6 @@ class ProcessSQSOrderUseCase:
                 logger.info(f"CLOSE order executed successfully: ticket={mt5_ticket}")
                 
                 # 4. 結果オブジェクト作成（既存のorder_repositoryと互換性）
-                from datetime import datetime, timezone
                 result_obj = type('CloseResult', (), {
                     'order': mt5_ticket,
                     'retcode': 10009,  # TRADE_RETCODE_DONE
