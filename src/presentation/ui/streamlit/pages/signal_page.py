@@ -90,23 +90,17 @@ def _render_signal_chart():
         
         if df is not None and not df.empty:
             # PriceChartComponent でシグナル表示ON
-            chart_component = PriceChartComponent()
-            
-            # シグナル表示設定（デフォルトON）
-            show_signals = True
-            show_support_resistance = True
-            show_patterns = True
-            
-            # チャート描画
-            chart_component.render_chart(
-                df, 
-                symbol, 
-                timeframe,
-                show_indicators=show_signals,
-                show_support_resistance=show_support_resistance,
-                show_patterns=show_patterns,
-                metadata=metadata
+            chart = PriceChartComponent.render_chart(
+                symbol=symbol,
+                timeframe=timeframe,
+                days=period_days,
+                use_real_data=True,
+                show_indicators=True  # シグナル表示ON
             )
+            
+            # チャート表示
+            if chart:
+                st.plotly_chart(chart, width="stretch", config={'displayModeBar': True})
             
             # データソース情報表示
             _render_data_source_info(metadata, symbol, timeframe)
