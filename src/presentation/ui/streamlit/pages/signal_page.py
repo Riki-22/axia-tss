@@ -157,7 +157,7 @@ def _render_signal_analysis():
     st.markdown(f"####  {symbol} {timeframe} シグナル分析")
     
     # シグナル設定（1列レイアウト）
-    st.markdown("#####  シグナル設定")
+    st.markdown("##### 🔧 シグナル設定")
     
     # シグナル表示オプション（横並び）
     signal_option_cols = st.columns(4)
@@ -174,7 +174,7 @@ def _render_signal_analysis():
     sensitivity = st.slider("シグナル感度", 1, 10, 5, key="signal_sensitivity")
     
     # シグナル詳細表示
-    st.markdown("##### 検出シグナル")
+    st.markdown("##### 📋 検出シグナル")
     _render_signal_list(symbol, timeframe, {
         'trend': show_trend,
         'oscillator': show_oscillator,
