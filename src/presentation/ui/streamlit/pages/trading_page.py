@@ -183,7 +183,7 @@ def _render_order_panel(chart_symbol: str, order_publisher):
                 f"🔼 BUY {chart_symbol}",
                 key="execute_buy",
                 type="primary",
-                use_container_width=True
+                width="stretch"
             ):
                 _execute_order(
                     symbol=chart_symbol,
@@ -199,7 +199,7 @@ def _render_order_panel(chart_symbol: str, order_publisher):
                 f"🔽 SELL {chart_symbol}",
                 key="execute_sell",
                 type="secondary",
-                use_container_width=True
+                width="stretch"
             ):
                 _execute_order(
                     symbol=chart_symbol,
@@ -375,7 +375,7 @@ def _render_chart_display(df, symbol, timeframe, days):
         st.plotly_chart(
             fig,
             config={'displayModeBar': False},
-            use_container_width=True
+            width="stretch"
         )
     except Exception as e:
         st.error(f"チャート表示エラー: {e}")

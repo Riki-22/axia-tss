@@ -82,7 +82,7 @@ def _render_signal_chart():
         data_source = get_chart_data_source()
         
         # チャートデータ取得
-        df, metadata = data_source.get_data(
+        df, metadata = data_source.get_ohlcv_data(
             symbol=symbol,
             timeframe=timeframe,
             period_days=period_days
