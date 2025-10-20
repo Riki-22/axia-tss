@@ -43,7 +43,7 @@ function Rotate-Log {
                 }
             }
             Move-Item $LogPath "$LogPath.1" -Force
-            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log rotation completed: $LogPath" -ForegroundColor Yellow
+            Write-Host "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Log rotation completed: $LogPath" -ForegroundColor Yellow
         }
     }
 }
@@ -52,7 +52,7 @@ function Rotate-Log {
 Rotate-Log -LogPath $LOG_FILE
 
 # Log start
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
 Add-Content -Path $LOG_FILE -Value "`n========================================`n[$timestamp] Order Manager startup initiated`n========================================"
 
 try {
@@ -61,24 +61,24 @@ try {
     
     # Verify Python executable
     if (-not (Test-Path $PYTHON_EXE)) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Python executable not found: $PYTHON_EXE"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: Python executable not found: $PYTHON_EXE"
         exit 1
     }
     
     # Check .env file
     if (Test-Path "$PROJECT_ROOT\.env") {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] .env file detected"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] .env file detected"
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] WARNING: .env file not found"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] WARNING: .env file not found"
     }
     
     # Start Order Manager
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executing Order Manager startup command"
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executable: $PYTHON_EXE"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Executing Order Manager startup command"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Executable: $PYTHON_EXE"
     
     # Set PYTHONPATH (CRITICAL for module imports)
     $env:PYTHONPATH = $PROJECT_ROOT
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] PYTHONPATH: $env:PYTHONPATH"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] PYTHONPATH: $env:PYTHONPATH"
 
     $process = Start-Process -FilePath $PYTHON_EXE `
         -ArgumentList "src\presentation\cli\run_order_processor.py" `
@@ -88,22 +88,22 @@ try {
         -NoNewWindow `
         -PassThru
     
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Order Manager started successfully (PID: $($process.Id))"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Order Manager started successfully (PID: $($process.Id))"
     
     # Verify startup (wait 5 seconds)
     Start-Sleep -Seconds 5
     
     if (-not $process.HasExited) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] OK Order Manager process running normally"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] OK Order Manager process running normally"
         exit 0
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Order Manager process terminated"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: Order Manager process terminated"
         exit 1
     }
     
 } catch {
     $errorMsg = $_.Exception.Message
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: $errorMsg"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: $errorMsg"
     Add-Content -Path $LOG_FILE -Value $_.ScriptStackTrace
     exit 1
 }

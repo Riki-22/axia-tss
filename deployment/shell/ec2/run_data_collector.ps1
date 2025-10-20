@@ -43,7 +43,7 @@ function Rotate-Log {
                 }
             }
             Move-Item $LogPath "$LogPath.1" -Force
-            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log rotation completed: $LogPath" -ForegroundColor Yellow
+            Write-Host "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Log rotation completed: $LogPath" -ForegroundColor Yellow
         }
     }
 }
@@ -52,7 +52,7 @@ function Rotate-Log {
 Rotate-Log -LogPath $LOG_FILE
 
 # Log start
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
 Add-Content -Path $LOG_FILE -Value "`n========================================`n[$timestamp] Data Collector execution initiated`n========================================"
 
 try {
@@ -61,55 +61,55 @@ try {
     
     # Verify Python executable
     if (-not (Test-Path $PYTHON_EXE)) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Python executable not found: $PYTHON_EXE"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: Python executable not found: $PYTHON_EXE"
         exit 1
     }
     
     # Check .env file
     if (Test-Path "$PROJECT_ROOT\.env") {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] .env file detected"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] .env file detected"
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] WARNING: .env file not found"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] WARNING: .env file not found"
     }
     
     # Execute Data Collector
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Data Collector execution started"
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executable: $PYTHON_EXE"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Data Collector execution started"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Executable: $PYTHON_EXE"
     
     # Set PYTHONPATH (CRITICAL for module imports)
     $env:PYTHONPATH = $PROJECT_ROOT
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] PYTHONPATH: $env:PYTHONPATH"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] PYTHONPATH: $env:PYTHONPATH"
 
     # Synchronous execution (wait for completion)
     $output = & $PYTHON_EXE src\presentation\cli\run_data_collector.py 2>&1
     $exitCode = $LASTEXITCODE
     
     # Record execution results to log
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ========== Execution Log =========="
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ========== Execution Log =========="
     Add-Content -Path $LOG_FILE -Value $output
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ========== Execution Log End =========="
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ========== Execution Log End =========="
     
     if ($exitCode -eq 0) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] OK Data Collector execution successful"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] OK Data Collector execution successful"
         
         # Get Redis statistics (optional)
         try {
             $statsScript = "from src.infrastructure.persistence.redis.redis_client import RedisClient; client = RedisClient(); stats = client.get_cache_stats(); print(f'Redis Keys: {stats[`"total_keys`"]}, Memory: {stats[`"memory_used_mb`"]:.2f}MB')"
             $statsOutput = & $PYTHON_EXE -c $statsScript 2>&1
-            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Redis statistics: $statsOutput"
+            Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Redis statistics: $statsOutput"
         } catch {
-            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Redis statistics retrieval skipped"
+            Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Redis statistics retrieval skipped"
         }
         
         exit 0
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Data Collector execution failed (ExitCode: $exitCode)"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: Data Collector execution failed (ExitCode: $exitCode)"
         exit 1
     }
     
 } catch {
     $errorMsg = $_.Exception.Message
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: $errorMsg"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: $errorMsg"
     Add-Content -Path $LOG_FILE -Value $_.ScriptStackTrace
     exit 1
 }

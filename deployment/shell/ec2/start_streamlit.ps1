@@ -44,7 +44,7 @@ function Rotate-Log {
                 }
             }
             Move-Item $LogPath "$LogPath.1" -Force
-            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log rotation completed: $LogPath" -ForegroundColor Yellow
+            Write-Host "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Log rotation completed: $LogPath" -ForegroundColor Yellow
         }
     }
 }
@@ -53,7 +53,7 @@ function Rotate-Log {
 Rotate-Log -LogPath $LOG_FILE
 
 # Log start
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
 Add-Content -Path $LOG_FILE -Value "`n========================================`n[$timestamp] Streamlit UI startup initiated`n========================================"
 
 try {
@@ -62,29 +62,29 @@ try {
     
     # Verify Python/Streamlit executables
     if (-not (Test-Path $PYTHON_EXE)) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Python executable not found: $PYTHON_EXE"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: Python executable not found: $PYTHON_EXE"
         exit 1
     }
     
     if (-not (Test-Path $STREAMLIT_EXE)) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Streamlit executable not found: $STREAMLIT_EXE"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: Streamlit executable not found: $STREAMLIT_EXE"
         exit 1
     }
     
     # Check .env file
     if (Test-Path "$PROJECT_ROOT\.env") {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] .env file detected"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] .env file detected"
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] WARNING: .env file not found"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] WARNING: .env file not found"
     }
     
     # Start Streamlit (background execution)
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executing Streamlit startup command"
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Executable: $STREAMLIT_EXE"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Executing Streamlit startup command"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Executable: $STREAMLIT_EXE"
     
     # Set PYTHONPATH (CRITICAL for module imports)
     $env:PYTHONPATH = $PROJECT_ROOT
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] PYTHONPATH: $env:PYTHONPATH"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] PYTHONPATH: $env:PYTHONPATH"
     
     # Start Streamlit as background process
     $process = Start-Process -FilePath $STREAMLIT_EXE `
@@ -95,23 +95,23 @@ try {
         -NoNewWindow `
         -PassThru
     
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Streamlit started successfully (PID: $($process.Id))"
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Access URL: http://localhost:8501"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Streamlit started successfully (PID: $($process.Id))"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Access URL: http://localhost:8501"
     
     # Verify startup (wait 5 seconds)
     Start-Sleep -Seconds 5
     
     if (-not $process.HasExited) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] OK Streamlit process running normally"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] OK Streamlit process running normally"
         exit 0
     } else {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: Streamlit process terminated"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: Streamlit process terminated"
         exit 1
     }
     
 } catch {
     $errorMsg = $_.Exception.Message
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: $errorMsg"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: $errorMsg"
     Add-Content -Path $LOG_FILE -Value $_.ScriptStackTrace
     exit 1
 }

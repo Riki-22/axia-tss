@@ -43,7 +43,7 @@ function Rotate-Log {
                 }
             }
             Move-Item $LogPath "$LogPath.1" -Force
-            Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log rotation completed: $LogPath" -ForegroundColor Yellow
+            Write-Host "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Log rotation completed: $LogPath" -ForegroundColor Yellow
         }
     }
 }
@@ -52,7 +52,7 @@ function Rotate-Log {
 Rotate-Log -LogPath $LOG_FILE
 
 # Log start
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
 Add-Content -Path $LOG_FILE -Value "`n========================================`n[$timestamp] MT5 Connector startup initiated`n========================================"
 
 try {
@@ -60,37 +60,37 @@ try {
     $mt5Process = Get-Process -Name "terminal64" -ErrorAction SilentlyContinue
     
     if ($mt5Process) {
-        Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] MT5 is already running (PID: $($mt5Process.Id))"
+        Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] MT5 is already running (PID: $($mt5Process.Id))"
     } else {
         # Start MT5
         if (Test-Path $MT5_TERMINAL_PATH) {
-            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Starting MT5: $MT5_TERMINAL_PATH"
+            Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Starting MT5: $MT5_TERMINAL_PATH"
             
             $process = Start-Process -FilePath $MT5_TERMINAL_PATH -PassThru -WindowStyle Minimized
             
-            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] MT5 started successfully (PID: $($process.Id))"
+            Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] MT5 started successfully (PID: $($process.Id))"
             
             # Wait for startup (10 seconds)
             Start-Sleep -Seconds 10
             
             $mt5Check = Get-Process -Name "terminal64" -ErrorAction SilentlyContinue
             if ($mt5Check) {
-                Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] OK MT5 process running normally"
+                Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] OK MT5 process running normally"
             } else {
-                Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] WARNING: Cannot verify MT5 process"
+                Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] WARNING: Cannot verify MT5 process"
             }
         } else {
-            Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: MT5 executable not found: $MT5_TERMINAL_PATH"
+            Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: MT5 executable not found: $MT5_TERMINAL_PATH"
             exit 1
         }
     }
     
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] OK MT5 Connector startup completed"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] OK MT5 Connector startup completed"
     exit 0
     
 } catch {
     $errorMsg = $_.Exception.Message
-    Add-Content -Path $LOG_FILE -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] ERROR: $errorMsg"
+    Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: $errorMsg"
     Add-Content -Path $LOG_FILE -Value $_.ScriptStackTrace
     exit 1
 }
