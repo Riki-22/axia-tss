@@ -105,7 +105,7 @@ graph TB
         end
         
         subgraph "Security Groups"
-            SGEC2[sg-axia-ec2<br/>Inbound: RDP(3389)<br/>Outbound: All]
+            SGEC2[sg-axia-ec2<br/>Inbound: RDP:3389<br/>Outbound: All]
             SGRedis[sg-elasticache-default<br/>Inbound: 6379 from EC2<br/>Outbound: None]
         end
         
