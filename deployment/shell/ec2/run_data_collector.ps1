@@ -91,16 +91,6 @@ try {
     
     if ($exitCode -eq 0) {
         Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] OK Data Collector execution successful"
-        
-        # Get Redis statistics (optional)
-        try {
-            $statsScript = "from src.infrastructure.persistence.redis.redis_client import RedisClient; client = RedisClient(); stats = client.get_cache_stats(); print(f'Redis Keys: {stats[`"total_keys`"]}, Memory: {stats[`"memory_used_mb`"]:.2f}MB')"
-            $statsOutput = & $PYTHON_EXE -c $statsScript 2>&1
-            Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Redis statistics: $statsOutput"
-        } catch {
-            Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] Redis statistics retrieval skipped"
-        }
-        
         exit 0
     } else {
         Add-Content -Path $LOG_FILE -Value "[$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))] ERROR: Data Collector execution failed (ExitCode: $exitCode)"

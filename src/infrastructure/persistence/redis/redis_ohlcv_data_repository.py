@@ -261,7 +261,7 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
             2. DataFrameに変換
             3. datetime型カラムを復元
             4. データ型を復元
-            5. インデックスを復元
+            5. インデックスを復元（DatetimeIndex）
         
         Note:
             - タイムゾーン情報（UTC）も復元される
@@ -297,19 +297,32 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
                     elif dtype_str.startswith('float'):
                         df[col] = df[col].astype('float64')
             
-            # インデックスを復元
             is_datetime_index = data_dict.get('is_datetime_index', False)
             index_name = data_dict.get('index_name')
             
-            if is_datetime_index and index_name in df.columns:
+            if is_datetime_index:
                 # DatetimeIndexとして復元
-                df = df.set_index(index_name)
-                # インデックスをdatetime型に変換（念のため）
+                # reset_index()で最初のカラムになったインデックスを探す
+                if index_name and index_name in df.columns:
+                    # index_nameが明示的に指定されている場合
+                    df = df.set_index(index_name)
+                elif len(df.columns) > 0:
+                    # 最初のカラムがdatetime型の場合、それをインデックスとする
+                    first_col = df.columns[0]
+                    if pd.api.types.is_datetime64_any_dtype(df[first_col]):
+                        df = df.set_index(first_col)
+                
+                # インデックスがDatetimeIndexでない場合は変換
                 if not isinstance(df.index, pd.DatetimeIndex):
                     df.index = pd.to_datetime(df.index, utc=True)
+                
+                # インデックス名を復元
+                if index_name:
+                    df.index.name = index_name
             
             logger.debug(
-                f"Deserialized DataFrame: {len(df)} rows"
+                f"Deserialized DataFrame: {len(df)} rows, "
+                f"index_type={type(df.index).__name__}"
             )
             
             return df
