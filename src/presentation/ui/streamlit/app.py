@@ -31,7 +31,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # プロジェクトルートをパスに追加
-project_root = Path(__file__).parent.parent.parent.parent
+project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 if project_root.exists():
