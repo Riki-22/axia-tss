@@ -1,11 +1,10 @@
-# AXIA - Algorithmic eXecution & Intelligence Architecture
+# AXIA Trading Strategy System
 
 **An integrated platform designed to sublimate trading from a personal 'art' into an analyzable, repeatable, and sustainable 'science'.**
 
 **Last Updated**: 2025-10-19  
 **Version**: 3.0  
 **Implementation Status**: 70% Complete (Core Features)  
-**Monthly Cost**: $43.50 USD
 
 [![Project Status](https://img.shields.io/badge/status-active-green.svg)]()
 [![AWS](https://img.shields.io/badge/AWS-Deployed-orange.svg)]()
@@ -14,95 +13,478 @@
 
 ---
 
-## 🎯 Current Implementation Status (Oct 2025)
+## 🎯 プロジェクト概要
 
-### ✅ **Implemented & Running**
-- **🔄 SQS Order System**: Streamlit → SQS → MT5 automated order flow (98% success rate)
-- **📊 Data Integration**: Redis/MT5/S3/yfinance unified data provider (15-94ms response)  
-- **🖥️ Real-time UI**: Streamlit dashboard with live charts and manual trading (1.2s load time)
-- **🚨 Risk Management**: Kill Switch with DynamoDB persistence and real-time monitoring
-- **☁️ AWS Infrastructure**: EC2 t3.small + managed services ($43.50/month)
+**AXIA Trading Strategy System** は感情や認知バイアスを排除し、自動取引を通じて持続可能な収益を実現することを目的とした個人投資家向けFX取引システムです。
 
-### 🔄 **In Development (Week 3-4)**
-- **💹 Live Price Orders**: MT5 real-time pricing integration
-- **📈 Position Management**: Real-time position monitoring and management
-- **📋 Advanced Dashboard**: Account info, P&L tracking, margin monitoring
+### 主要な特徴
 
-### 📋 **Designed (Phase 3+)**
-- **🤖 Signal Generation**: 10 technical indicators with Bayesian inference
-- **📊 Backtesting Engine**: Vectorized + event-driven testing framework
-- **🎯 Portfolio Risk**: Multi-currency correlation and dynamic sizing
+<u> **リアルタイムUI (Real-time UI)** </u>
+
+- Streamlitを使用し、リアルタイムの価格チャート、口座情報、現在のポジション・損益（P&L）、証拠金維持率、パターン検出など表示
+  - ダッシュボード
+    ![trading_page](docs/asset/trading_page.png)
+
+  - ポジション情報
+    ![position_page](docs/asset/position_page.png)
+
+  - パターン検出
+    ![analyze_page](docs/asset/analyze_page.png)
+
+<u> **注文システム (SQS Order System)** </u>
+
+- StreamlitのUIから送信された注文リクエストをSQS（メッセージキュー）を介して非同期で処理し、EC2サーバー上のMT5（MetaTrader 5）で注文を自動実行
+
+  - 注文パネル
+    ![order_panel](docs/asset/order_panel.png)
+
+<u> **統合データ戦略 (Data Integration)** </u>
+
+- 「3階層データ戦略」（Hot: Redis / Warm: DynamoDB / Cold: S3）を採用。Redis（キャッシュ）、MT5（リアルタイム）、S3（履歴）、yfinance（フォールバック）といった複数のデータソースを透過的に扱う「統合データプロバイダー」を実装、パフォーマンスと可用性を両立
+
+    ```mermaid
+    graph TB
+        subgraph "Data Access Patterns"
+            subgraph "Hot Data (Redis)"
+                direction TB
+                HotAccess[高頻度アクセス<br/>ミリ秒応答]
+                RealtimePrice[リアルタイム価格]
+                ActivePos[アクティブポジション]
+                RecentOHLCV[24時間OHLCV]
+            end
+            
+            subgraph "Warm Data (DynamoDB)"
+                direction TB
+                WarmAccess[中頻度アクセス<br/>低レイテンシ]
+                TradingRecords[取引記録]
+                OrderHistory[注文履歴]
+                SystemConfig[システム設定]
+            end
+            
+            subgraph "Cold Data (S3)"
+                direction TB
+                ColdAccess[低頻度アクセス<br/>大容量]
+                HistoricalOHLCV[ヒストリカルOHLCVデータ]
+            end
+        end
+            
+        classDef hot fill:#ffebee,color:#000
+        classDef warm fill:#e8f5e8,color:#000
+        classDef cold fill:#e1f5fe,color:#000
+        
+        class RealtimePrice,ActivePos,RecentOHLCV hot
+        class TradingRecords,OrderHistory,SystemConfig warm
+        class HistoricalOHLCV,BacktestResults,SystemLogs cold
+    ```
+
+<u> **リスク管理 (Risk Management)** </u>
+
+- 取引の緊急停止を行うための「Kill Switch」機能が実装されており、その状態をDynamoDBで永続的に管理。また、注文時のバリデーション（検証）も実装
+
+    ```mermaid
+    stateDiagram-v2
+        [*] --> Inactive: システム起動
+        
+        Inactive --> Active: 手動有効化
+        Inactive --> Active: 自動トリガー
+        
+        Active --> Inactive: 手動無効化
+        
+        state Active {
+            [*] --> Monitoring: 有効化
+            Monitoring --> BlockOrders: 注文ブロック
+            BlockOrders --> Monitoring: 継続監視
+        }
+        
+        state "自動トリガー条件" as AutoTrigger {
+            DailyLoss: 日次損失制限
+            Drawdown: ドローダウン制限
+            SystemError: システムエラー
+        }
+    ```
+
+<u> **アーキテクチャ (Architecture Quality)** </u>
+
+  - ビジネスロジックと技術的詳細を分離する「クリーンアーキテクチャ」と「DDD（ドメイン駆動設計）」、および「依存性注入（DI）」パターンを採用しており、テストや保守が容易な設計
+
+    ```mermaid
+    graph TB
+        subgraph "User Interface"
+            UI[Streamlit UI]
+            CLI[CLI Scripts]
+        end
+
+        subgraph "External World"
+            UI[Streamlit UI]
+            CLI[CLI Scripts]
+            Broker[MT5 Broker]
+            AWS[AWS Services]
+        end
+        
+        subgraph "Clean Architecture Layers"
+            subgraph "Presentation Layer"
+                Controllers[Controllers]
+                Presenters[Presenters]
+            end
+            
+            subgraph "Application Layer"
+                UseCases[Use Cases]
+                AppServices[Application Services]
+            end
+            
+            subgraph "Domain Layer"
+                Entities[Entities]
+                DomainServices[Domain Services]
+                Repositories[Repository Interfaces]
+            end
+            
+            subgraph "Infrastructure Layer"
+                RepositoryImpl[Repository Implementations]
+                Gateways[External Gateways]
+                Frameworks[Frameworks & Drivers]
+            end
+        end
+        
+        UI --> Controllers
+        CLI --> Controllers
+        Controllers --> UseCases
+        UseCases --> DomainServices
+        UseCases --> Repositories
+        Repositories -.-> RepositoryImpl
+        RepositoryImpl --> AWS
+        Gateways --> Broker
+        
+    ```
+
+<u> **パフォーマンスとコスト効率 (Performance & Cost)** </u>
+
+  - Redisキャッシュの活用により15～94msという高速なデータ応答時間を実現しつつ、EC2 t3.smallインスタンスと各種AWSマネージドサービスを組み合わせて、月額約$43.50という低コストでの運用を実現
+
+    **月額予算上限**: $50.00 (約7,500円)  
+    **現在の月額コスト**: $43.50 (約6,525円)  
+    **予算残余**: $6.50 (約975円) = 13%のバッファー
+
+    ```mermaid
+    pie title 月額コスト内訳 ($43.50)
+        "EC2 Instance" : 24.00
+        "ElastiCache" : 8.00
+        "DynamoDB" : 3.00
+        "Secrets Manager" : 2.50
+        "S3 Storage" : 2.00
+        "CloudWatch" : 3.00
+        "SQS" : 1.00
+    ```
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ アーキテクチャ
 
-### Current Implementation Architecture
+### システム全体構成
 
-```mermaid
-graph TB
-    subgraph "User Interface"
-        StreamlitUI[🖥️ Streamlit UI<br/>Real-time Dashboard]
-    end
-    
-    subgraph "Application Core"
-        OrderSystem[📬 SQS Order System<br/>Async Processing]
-        DataSystem[📊 Data Integration<br/>Multi-source Provider]
-        RiskSystem[🛡️ Risk Management<br/>Kill Switch + Validation]
-    end
-    
-    subgraph "AWS Infrastructure"
-        EC2[🖥️ EC2 t3.small<br/>Windows Server 2022]
-        DynamoDB[🗄️ DynamoDB<br/>Orders & Configuration]
-        Redis[⚡ ElastiCache Redis<br/>24h Data Cache]
-        S3[📦 S3<br/>Historical Data Archive]
-        SQS[📨 SQS<br/>Order Queue]
-    end
-    
-    subgraph "External Systems"
-        MT5[🏦 MetaTrader 5<br/>Order Execution]
-        YFinance[📊 yfinance API<br/>Fallback Data]
-    end
-    
-    StreamlitUI --> OrderSystem
-    StreamlitUI --> DataSystem
-    StreamlitUI --> RiskSystem
-    
-    OrderSystem --> EC2
-    DataSystem --> EC2
-    RiskSystem --> EC2
-    
-    EC2 --> DynamoDB
-    EC2 --> Redis
-    EC2 --> S3
-    EC2 --> SQS
-    EC2 --> MT5
-    EC2 --> YFinance
-    
-    classDef ui fill:#e1f5fe,color:#000
-    classDef app fill:#e8f5e8,color:#000
-    classDef aws fill:#fff3e0,color:#000
-    classDef external fill:#ffcdd2,color:#000
-    
-    class StreamlitUI ui
-    class OrderSystem,DataSystem,RiskSystem app
-    class EC2,DynamoDB,Redis,S3,SQS aws
-    class MT5,YFinance external
+![aws_architecutre](docs/asset/aws_architecture.png)
+
+---
+
+## 💻 技術スタック
+
+### バックエンド
+- **言語**: Python 3.11
+- **アーキテクチャ**: Clean Architecture + Domain-Driven Design
+- **依存性注入**: Dependency Injector (Python)
+- **データ検証**: Pydantic
+
+### インフラストラクチャ（AWS）
+| サービス | 用途 | コスト/月 |
+|---------|------|----------|
+| **EC2** (t3.small) | アプリケーション実行 | $15.33 |
+| **ElastiCache** (t4g.micro) | Redisキャッシュ | $11.68 |
+| **DynamoDB** (On-Demand) | 注文履歴・Kill Switch | $5.00 |
+| **S3** (Standard) | 長期データ保存 | $5.00 |
+| **SQS** (Standard) | 非同期注文処理 | $0.50 |
+| **CloudWatch** | 監視・ログ | $3.00 |
+| **Secrets Manager** | 認証情報管理 | $2.00 |
+| **VPC** | ネットワーク | $0.99 |
+| **合計** | | **$43.50** |
+
+### データベース
+- **Redis** (ElastiCache): ホットキャッシュ、15-94ms応答
+- **DynamoDB**: 注文履歴、Kill Switch状態
+- **S3**: 長期OHLCVデータ、パーティション設計
+
+### 外部連携
+- **MetaTrader 5 (MT5)**: FX取引実行、リアルタイムデータ取得
+- **yfinance**: バックアップデータソース
+
+### UI/監視
+- **Streamlit**: リアルタイムダッシュボード、手動操作インターフェース
+- **Plotly**: インタラクティブチャート
+
+### 開発・運用
+- **Git/GitHub**: バージョン管理
+- **pytest**: ユニットテスト（カバレッジ 86%）
+- **Task Scheduler**: Windows自動起動
+- **CloudWatch**: ログ・メトリクス監視
+
+---
+
+## 🚀 主要機能
+
+### 1. 統合データアクセス層（OhlcvDataProvider）
+
+```python
+# 4つのデータソースを透過的に統合、自動フォールバック
+sources = [Redis, MT5, S3, yfinance]
+data = provider.get_data(
+    symbol="USDJPY",
+    timeframe="H1",
+    use_case="trading"  # trading/chart/analysis
+)
+# Redis 15ms → MT5 → S3 → yfinance の順で自動フォールバック
 ```
 
-### 🏆 **Performance Achievements**
-- **⚡ Redis Cache**: 15-94ms response time (Target: <100ms) ✅
-- **💻 UI Response**: 1.2s page load (Target: <2s) ✅  
-- **📈 Order Success**: 98% success rate (Target: >95%) ✅
-- **💰 Cost Efficiency**: $43.50/month (Budget: <$50) ✅
+**特徴**:
+- 複数ソース統合（Redis/MT5/S3/yfinance）
+- ユースケース別最適化（trading/chart/analysis）
+- 自動フォールバック戦略
+- 自動Redisキャッシュ
+- 統計情報収集（ソース別ヒット率）
+
+### 2. SQS非同期注文システム
+
+```python
+# 注文をSQS経由で非同期処理、Kill Switch確認を統合
+await order_publisher.publish_order_request(
+    symbol="USDJPY",
+    order_type="BUY",
+    lots=0.1,
+    tp=150.50,
+    sl=149.50
+)
+# → SQS → Lambda → MT5 (98%成功率)
+```
+
+**特徴**:
+- Kill Switch自動確認
+- 注文バリデーション
+- DynamoDB監査証跡
+- 98%の注文成功率
+- エラーハンドリング（DLQ）
+
+### 3. リアルタイムポジション管理
+
+```python
+# リアルタイムでポジション状況を監視・管理
+positions = position_provider.get_open_positions()
+profit_loss = position_provider.calculate_total_pl()
+# MT5から直接取得、リアルタイム損益計算
+```
+
+**特徴**:
+- リアルタイムポジション取得
+- 損益計算（実現/未実現）
+- 手動決済機能
+- リスク監視
+
+### 4. Kill Switch（緊急停止機能）
+
+```python
+# グローバルな取引停止メカニズム
+kill_switch_repo.activate()  # 全注文を即座に停止
+# DynamoDBに永続化、全プロセスで共有
+```
+
+**特徴**:
+- 手動有効化・無効化（Streamlit UI）
+- DynamoDB永続化
+- 全注文処理で自動確認
+- 監査ログ記録
+
+### 5. リアルタイムダッシュボード（Streamlit）
+
+**機能**:
+- リアルタイム価格チャート（Plotly）
+- ポジション一覧・損益表示
+- 手動注文実行
+- Kill Switch操作
+- システムヘルスチェック
+- データソース統計
 
 ---
 
-## 📚 Documentation
+## 📊 実装状況
 
-### 📖 **[Complete Documentation Portal](docs/README.md)**
+### Phase別進捗
 
-#### 🧠 **Logical Design**
+| Phase | 内容 | 進捗 | 完了日 |
+|-------|------|------|--------|
+| **Phase 1** | データ収集基盤 | 100% | 2025-10-16 |
+| **Phase 2** | データ提供層 | 100% | 2025-10-18 |
+| **Phase 3** | 注文処理・UI | 95% | 2025-10-19 |
+| **Phase 4** | シグナル生成 | 📋 設計完了 | 未定 |
+| **Phase 5** | バックテスト | 📋 設計完了 | 未定 |
+
+### 実装済み機能
+
+```
+MT5接続・データ収集（45タスク 100%成功）
+S3保存機能（パーティション設計）
+Redis統合（15-94ms応答、46キー 8.84MB）
+データ統合プロバイダー（4ソース統合）
+SQS注文システム（98%成功率）
+Kill Switch（DynamoDB永続化）
+ポジション管理（リアルタイム取得）
+Streamlit UI（リアルタイムダッシュボード）
+Domain層統合（Order Entity実装）
+クリーンアーキテクチャ完成
+```
+
+### テストカバレッジ
+
+```
+Production Code: ~4,200行（13ファイル）
+Test Code:       ~1,800行（8ファイル）
+Coverage:        86%
+
+Unit Tests:      73テスト 100%成功
+Integration:     設計完了
+```
+
+---
+
+## 🛠️ セットアップ
+
+### 前提条件
+
+- Python 3.11+
+- AWS アカウント（EC2, ElastiCache, DynamoDB, S3, SQS等）
+- MetaTrader 5アカウント
+
+### ローカル開発環境
+
+```bash
+# 1. リポジトリクローン
+git clone https://github.com/yourusername/axia-tss.git
+cd axia-tss
+
+# 2. 仮想環境作成
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # macOS/Linux
+
+# 3. 依存パッケージインストール
+pip install -r requirements.txt
+
+# 4. 環境変数設定
+# .env ファイルを作成し、以下を設定
+# AWS_REGION=ap-northeast-1
+# MT5_LOGIN=your_mt5_login
+# MT5_PASSWORD=your_mt5_password
+# MT5_SERVER=your_mt5_server
+# REDIS_ENDPOINT=your_redis_endpoint
+
+# 5. Streamlit起動
+streamlit run src/presentation/ui/streamlit/app.py
+```
+
+### AWS環境構築
+
+詳細は [deployment.md](docs/physical_design/deployment.md) を参照
+
+```bash
+# EC2インスタンス起動
+aws ec2 run-instances \
+  --image-id ami-xxxxxxxxx \
+  --instance-type t3.small \
+  --security-group-ids sg-axia-ec2 \
+  --iam-instance-profile Name=EC2InstanceRole
+
+# アプリケーションデプロイ
+# 詳細はデプロイメント手順書を参照
+```
+
+---
+
+## 📁 プロジェクト構造
+
+```
+axia-tss/
+├── src/
+│   ├── domain/                    # ドメイン層（ビジネスロジック）
+│   │   ├── entities/              # Order, Position等
+│   │   ├── repositories/          # リポジトリインターフェース
+│   │   └── services/              # ドメインサービス
+│   │
+│   ├── application/               # アプリケーション層（ユースケース）
+│   │   └── use_cases/
+│   │       ├── data_collection/   # データ収集
+│   │       └── order_processing/  # 注文処理
+│   │
+│   ├── infrastructure/            # インフラ層（技術実装）
+│   │   ├── persistence/           # データ永続化
+│   │   │   ├── dynamodb/          # DynamoDBリポジトリ
+│   │   │   ├── redis/             # Redisリポジトリ
+│   │   │   └── s3/                # S3リポジトリ
+│   │   ├── gateways/              # 外部連携
+│   │   │   ├── brokers/mt5/       # MT5接続
+│   │   │   └── market_data/       # データプロバイダー
+│   │   └── messaging/             # メッセージング
+│   │       └── sqs/               # SQS Publisher
+│   │
+│   ├── presentation/              # プレゼンテーション層（UI）
+│   │   └── ui/streamlit/          # Streamlit UI
+│   │
+│   └── infrastructure/di/         # 依存性注入
+│       └── container.py           # DIコンテナ
+│
+├── tests/                         # テストコード
+│   ├── unit/                      # ユニットテスト
+│   └── integration/               # 統合テスト
+│
+├── docs/                          # ドキュメント
+│   ├── logical_design/            # 論理設計
+│   ├── physical_design/           # 物理設計
+│   └── implementation/            # 実装管理
+│
+└── requirements.txt               # Python依存パッケージ
+```
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Presentation Layer                       │
+│  Streamlit UI (リアルタイム監視・手動操作・チャート表示)               │
+└─────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                       Application Layer                         │
+│  • Data Collection UseCase  (データ収集オーケストレーション)         │
+│  • Order Processing UseCase (注文処理ビジネスロジック)              │
+└─────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                         Domain Layer                            │
+│  • Order Entity (注文ドメインモデル)                               │
+│  • Kill Switch (緊急停止メカニズム)                                │
+│  • Validators (ビジネスルール検証)                                 │
+└─────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                     Infrastructure Layer                        │
+│                                                                 │
+│  [Gateways]              [Persistence]           [Messaging]    │
+│  • MT5 (取引実行)        • DynamoDB （注文履歴）   • SQS（非同期）   │
+│  • OhlcvProvider統合     • Redis （ホットキャッシュ）               │
+│    - Redis (15-94ms)    • S3 (コールドストレージ)                  │
+│    - MT5                                                        │
+│    - S3                                                         │
+│    - yfinance                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 📖 **[ドキュメント](docs/README.md)**
+
+#### **論理設計**
 - **[Business Requirements](docs/logical_design/business_requirements.md)** - User stories, KPIs, success metrics
 - **[Domain Model](docs/logical_design/domain_model.md)** - Entities, services, aggregates  
 - **[Architecture Patterns](docs/logical_design/architecture_patterns.md)** - Clean architecture, DDD implementation
@@ -110,7 +492,7 @@ graph TB
 - **[Data Model](docs/logical_design/data_model.md)** - 3-tier data strategy, schemas, optimization
 - **[Quality Requirements](docs/logical_design/quality_requirements.md)** - Performance SLAs, measured results
 
-#### 🏗️ **Physical Design**  
+#### **物理設計**  
 - **[AWS Architecture](docs/physical_design/aws_architecture.md)** - Services configuration, IAM, security
 - **[Database Schema](docs/physical_design/database_schema.md)** - DynamoDB/Redis/S3 detailed design
 - **[Infrastructure](docs/physical_design/infrastructure.md)** - EC2, networking, automation
@@ -118,13 +500,13 @@ graph TB
 - **[Monitoring](docs/physical_design/monitoring.md)** - CloudWatch, health checks, alerting
 - **[Cost Optimization](docs/physical_design/cost_optimization.md)** - Cost analysis, optimization strategies
 
-#### 🎯 **Implementation Status**
+#### 🎯 **実装ステータス**
 - **[Basic Design](docs/basic_design.md)** - Integrated design overview with implementation mapping
 - **[Current Status](docs/implementation/current_status.md)** - Live implementation status, metrics, progress
 
 ---
 
-## 🚀 Quick Start
+## クイックスタート
 
 ### For Developers
 ```bash
@@ -164,111 +546,65 @@ Read: docs/basic_design.md
 
 ---
 
-## 🛠️ Tech Stack
+## 📈 パフォーマンス実測値
 
-### **Core Technologies**
-- **Language**: Python 3.11+ 
-- **Web Framework**: Streamlit 1.28+ (Real-time dashboard)
-- **Data Processing**: pandas, numpy (Market data analysis)
-- **Visualization**: Plotly (Interactive charts)
-- **Trading Platform**: MetaTrader5 5.0.45+ (Order execution)
-- **Architecture**: Clean Architecture + DDD
-
-### **AWS Services (Current)**
-- **Compute**: EC2 t3.small (Windows Server 2022)
-- **Database**: DynamoDB (Orders), ElastiCache Redis (Cache)
-- **Storage**: S3 (Historical data, Parquet format)
-- **Messaging**: SQS (Async order processing)
-- **Monitoring**: CloudWatch (Logs, metrics, alarms)
-- **Security**: IAM Roles, Secrets Manager
-
-### **Data Sources**
-- **Primary**: MetaTrader 5 (Real-time + historical)
-- **Cache**: Redis (24h TTL, 15-94ms response)
-- **Archive**: S3 (Parquet, lifecycle policies)
-- **Fallback**: yfinance API (Market data backup)
+| メトリクス | 目標 | 実測値 | 測定日 |
+|----------|------|-------|--------|
+| **Redis応答時間** | <100ms | 15-94ms | 2025-10-18 |
+| **UI描画時間** | <2秒 | 1.2秒 | 2025-10-19 |
+| **注文成功率** | >95% | 98% | 2025-10-19 |
+| **データ収集成功率** | >95% | 100% (45/45) | 2025-10-16 |
+| **メモリ使用量** | <50MB | 8.84MB | 2025-10-18 |
 
 ---
 
-## 📈 Implementation Roadmap
+## 🔒 セキュリティ
 
-### **Phase 1: Foundation (✅ Complete)**
-- ✅ AWS infrastructure setup
-- ✅ Clean architecture implementation
-- ✅ Redis caching system
-- ✅ Basic MT5 integration
-
-### **Phase 2: Core Features (✅ 85% Complete)**
-- ✅ SQS order processing system
-- ✅ 3-tier data integration  
-- ✅ Streamlit UI with real-time charts
-- 🔄 Live price-based orders (Week 3-4)
-
-### **Phase 3: Advanced Features (📋 Designed)**
-- 📋 Multi-signal trading system
-- 📋 Advanced position management
-- 📋 Backtesting framework
-- 📋 Portfolio risk management
-
-### **Phase 4: Intelligence (🔮 Future)**
-- 🔮 Machine learning integration
-- 🔮 SageMaker MLOps pipeline  
-- 🔮 AI-powered market analysis
-- 🔮 Automated strategy optimization
+- AWS Secrets Manager：認証情報管理
+- IAM Role：アクセス制御、最小権限設定
+- VPC：プライベートサブネット内への配置
+- Security Group：アクセス元IP制限
 
 ---
 
-## 🏆 Key Achievements
+## 💰 コスト最適化
 
-### **Technical Milestones**
-- **⚡ High Performance**: Redis 15-94ms, UI 1.2s load time
-- **🔒 Reliability**: 98% order success rate, 94% data retrieval success
-- **💰 Cost Efficiency**: $43.50/month (13% under budget)
-- **🏗️ Architecture Quality**: Clean architecture, 86% test coverage
-- **🔧 Operational**: 4-process automation, health monitoring
+```
+月額運用コスト: $43.50
 
-### **Business Value**
-- **🎯 Risk Management**: Kill Switch, position limits, validation
-- **📊 Data Quality**: Multi-source integration, fallback strategies  
-- **🖥️ User Experience**: Intuitive UI, real-time monitoring
-- **⚙️ Automation**: 24/7 operation, minimal manual intervention
-- **📈 Scalability**: Design supports multi-currency expansion
+内訳:
+- EC2 (t3.small):           $15.33 (35%)
+- ElastiCache (t4g.micro):  $11.68 (27%)
+- DynamoDB (On-Demand):     $5.00  (11%)
+- S3 (Standard):            $5.00  (11%)
+- その他 (SQS/CloudWatch):  $6.49  (15%)
 
----
-
-## 🤝 Contributing
-
-### Development Guidelines
-- Follow Clean Architecture principles
-- Maintain >80% test coverage
-- Document all public APIs
-- Use type hints consistently
-- Update relevant design docs with changes
-
-### Documentation Updates
-- **Feature Implementation**: Update functional_design.md
-- **AWS Changes**: Update relevant physical_design docs  
-- **Performance Changes**: Update quality_requirements.md with new metrics
-- **Weekly**: Update current_status.md with progress
+最適化施策:
+リザーブドインスタンス検討（EC2 30%削減可能）
+S3 Glacier移行（古いデータ 90%削減）
+CloudWatch Logs保持期間最適化
+```
 
 ---
 
-## 📞 Support & Contact
+## コントリビューション
 
-### Project Resources
-- **📚 [Documentation](docs/README.md)**: Comprehensive design and implementation docs
-- **🔧 [Implementation Status](docs/implementation/current_status.md)**: Live progress tracking
-- **💰 [Cost Analysis](docs/physical_design/cost_optimization.md)**: Budget management and optimization
+このプロジェクトは個人プロジェクトですが、改善提案やフィードバックを歓迎します。
 
-### Development Environment
-- **Local**: Python 3.11 + Virtual Environment
-- **Demo**: EC2 Windows + AWS Services  
-- **Monitoring**: Streamlit Dashboard + CloudWatch
-- **Testing**: pytest + Mock services
+## ライセンス
+
+このプロジェクトは個人利用のみを目的としています。
+
+## 謝辞
+
+このプロジェクトは以下の技術・サービスを活用して構築されています：
+
+- **AWS**: フルマネージドインフラ
+- **MetaTrader 5**: FX取引プラットフォーム
+- **Streamlit**: リアルタイムダッシュボード
+- **Python**: バックエンド開発言語
 
 ---
 
-**License**: Proprietary - All Rights Reserved  
-**Document Version**: 3.0  
-**Created**: 2025-08-03  
-**Updated**: 2025-10-19
+**Last Updated**: 2025-10-31  
+**Version**: 1.0.0  

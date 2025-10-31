@@ -29,6 +29,11 @@
 
 ```mermaid
 graph TB
+    subgraph "User Interface"
+        UI[Streamlit UI]
+        CLI[CLI Scripts]
+    end
+
     subgraph "External World"
         UI[Streamlit UI]
         CLI[CLI Scripts]
