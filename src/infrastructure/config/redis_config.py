@@ -40,7 +40,7 @@ class RedisConfig(BaseConfig):
         self.redis_memory_warning_mb = self.get_env_int('REDIS_MEMORY_WARNING_MB', 40)
         self.redis_memory_critical_mb = self.get_env_int('REDIS_MEMORY_CRITICAL_MB', 50)
         
-        # NYクローズ時刻設定（FX市場サイクル）
+        # NYクローズ時刻設定（市場サイクル）
         self.ny_close_hour_edt = self.get_env_int('NY_CLOSE_HOUR_EDT', 6)  # 夏時間: JST 06:00
         self.ny_close_hour_est = self.get_env_int('NY_CLOSE_HOUR_EST', 7)  # 冬時間: JST 07:00
         

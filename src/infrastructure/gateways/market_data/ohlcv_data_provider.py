@@ -281,7 +281,7 @@ class OhlcvDataProvider:
         """
         bars_per_day = self.BARS_PER_DAY.get(timeframe, 24)
         
-        # FX市場は土日休場を考慮（平日のみ）
+        # 市場は土日休場を考慮（平日のみ）
         # 概算: 7日分 → 5日分
         actual_days = days * (5 / 7)
         

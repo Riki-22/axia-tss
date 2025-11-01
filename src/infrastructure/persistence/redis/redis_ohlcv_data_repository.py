@@ -21,7 +21,7 @@ class RedisOhlcvDataRepository(IOhlcvDataRepository):
     OHLCVデータ専用キャッシュクラス
     
     特徴:
-    - NYクローズ基準のTTL管理（FX市場サイクルと整合）
+    - NYクローズ基準のTTL管理（市場サイクルと整合）
     - MessagePackによる高速シリアライズ
     - 24時間データ保持（週末は約40時間）
     - メモリ使用量監視
