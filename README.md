@@ -1,3 +1,15 @@
+---
+puppeteer:
+  scale: 0.8               # 縮尺
+  format: "A4"             # 用紙サイズ
+  landscape: false         # 向き (true=横向き, false=縦向き)
+  margin:                  # 余白
+    top: "1.5cm"
+    bottom: "1cm"
+    left: "1cm"
+    right: "1cm"
+---
+
 # AXIA Trading Strategy System
 
 **An integrated platform designed to sublimate trading from a personal 'art' into an analyzable, repeatable, and sustainable 'science'.**
@@ -37,6 +49,63 @@
 
   - 注文パネル
     ![order_panel](docs/asset/order_panel.png)
+
+<u> **アーキテクチャ (System Architecture)** </u>
+
+  - システム全体構成
+
+    ![aws_architecutre](docs/asset/aws_architecture.png)
+
+  - ビジネスロジックと技術的詳細を分離する「クリーンアーキテクチャ」と「DDD（ドメイン駆動設計）」、および「依存性注入（DI）」パターンを採用しており、テストや保守が容易な設計
+
+    ```mermaid
+    graph TB
+        subgraph "User Interface"
+            UI[Streamlit UI]
+            CLI[CLI Scripts]
+        end
+
+        subgraph "External World"
+            UI[Streamlit UI]
+            CLI[CLI Scripts]
+            Broker[MT5 Broker]
+            AWS[AWS Services]
+        end
+        
+        subgraph "Clean Architecture Layers"
+            subgraph "Presentation Layer"
+                Controllers[Controllers]
+                Presenters[Presenters]
+            end
+            
+            subgraph "Application Layer"
+                UseCases[Use Cases]
+                AppServices[Application Services]
+            end
+            
+            subgraph "Domain Layer"
+                Entities[Entities]
+                DomainServices[Domain Services]
+                Repositories[Repository Interfaces]
+            end
+            
+            subgraph "Infrastructure Layer"
+                RepositoryImpl[Repository Implementations]
+                Gateways[External Gateways]
+                Frameworks[Frameworks & Drivers]
+            end
+        end
+        
+        UI --> Controllers
+        CLI --> Controllers
+        Controllers --> UseCases
+        UseCases --> DomainServices
+        UseCases --> Repositories
+        Repositories -.-> RepositoryImpl
+        RepositoryImpl --> AWS
+        Gateways --> Broker
+        
+    ```
 
 <u> **統合データ戦略 (Data Integration)** </u>
 
@@ -103,59 +172,6 @@
         }
     ```
 
-<u> **アーキテクチャ (Architecture Quality)** </u>
-
-  - ビジネスロジックと技術的詳細を分離する「クリーンアーキテクチャ」と「DDD（ドメイン駆動設計）」、および「依存性注入（DI）」パターンを採用しており、テストや保守が容易な設計
-
-    ```mermaid
-    graph TB
-        subgraph "User Interface"
-            UI[Streamlit UI]
-            CLI[CLI Scripts]
-        end
-
-        subgraph "External World"
-            UI[Streamlit UI]
-            CLI[CLI Scripts]
-            Broker[MT5 Broker]
-            AWS[AWS Services]
-        end
-        
-        subgraph "Clean Architecture Layers"
-            subgraph "Presentation Layer"
-                Controllers[Controllers]
-                Presenters[Presenters]
-            end
-            
-            subgraph "Application Layer"
-                UseCases[Use Cases]
-                AppServices[Application Services]
-            end
-            
-            subgraph "Domain Layer"
-                Entities[Entities]
-                DomainServices[Domain Services]
-                Repositories[Repository Interfaces]
-            end
-            
-            subgraph "Infrastructure Layer"
-                RepositoryImpl[Repository Implementations]
-                Gateways[External Gateways]
-                Frameworks[Frameworks & Drivers]
-            end
-        end
-        
-        UI --> Controllers
-        CLI --> Controllers
-        Controllers --> UseCases
-        UseCases --> DomainServices
-        UseCases --> Repositories
-        Repositories -.-> RepositoryImpl
-        RepositoryImpl --> AWS
-        Gateways --> Broker
-        
-    ```
-
 <u> **パフォーマンスとコスト効率 (Performance & Cost)** </u>
 
   - Redisキャッシュの活用により15～94msという高速なデータ応答時間を実現しつつ、EC2 t3.smallインスタンスと各種AWSマネージドサービスを組み合わせて、月額約$43.50という低コストでの運用を実現
@@ -174,14 +190,6 @@
         "CloudWatch" : 3.00
         "SQS" : 1.00
     ```
-
----
-
-## 🏗️ アーキテクチャ
-
-### システム全体構成
-
-![aws_architecutre](docs/asset/aws_architecture.png)
 
 ---
 
