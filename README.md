@@ -168,14 +168,13 @@ stateDiagram-v2
 
 #### パフォーマンスとコスト効率 (Performance & Cost)
 
-Redisキャッシュの活用により15～94msという高速なデータ応答時間を実現しつつ、EC2 t3.smallインスタンスと各種AWSマネージドサービスを組み合わせて、月額約$43.50という低コストでの運用を実現
+EC2 t3.smallインスタンスと各種AWSマネージドサービスを組み合わせて、月額約$50以下での運用を実現
 
 - **月額予算上限**: $50.00 (約7,500円)  
 - **現在の月額コスト**: $43.50 (約6,525円)  
 - **予算残余**: $6.50 (約975円) = 13%のバッファー
 
 ```mermaid
-%%{init: {'theme': 'dark'}}%%
 pie title 月額コスト内訳 ($43.50)
     "EC2 Instance" : 24.00
     "ElastiCache" : 8.00
@@ -243,7 +242,7 @@ data = provider.get_data(
     timeframe="H1",
     use_case="trading"  # trading/chart/analysis
 )
-# Redis 15ms → MT5 → S3 → yfinance の順で自動フォールバック
+# Redis → MT5 → S3 → yfinance の順で自動フォールバック
 ```
 
 **特徴**:
@@ -264,7 +263,7 @@ await order_publisher.publish_order_request(
     tp=150.50,
     sl=149.50
 )
-# → SQS → Lambda → MT5 (98%成功率)
+# → SQS → Lambda → MT5
 ```
 
 **特徴**:
@@ -330,16 +329,15 @@ kill_switch_repo.activate()  # 全注文を即座に停止
 ### 実装済み機能
 
 ```
-MT5接続・データ収集（45タスク 100%成功）
+MT5接続・データ収集
 S3保存機能（パーティション設計）
 Redis統合（15-94ms応答、46キー 8.84MB）
 データ統合プロバイダー（4ソース統合）
-SQS注文システム（98%成功率）
+SQS注文システム
 Kill Switch（DynamoDB永続化）
 ポジション管理（リアルタイム取得）
 Streamlit UI（リアルタイムダッシュボード）
-Domain層統合（Order Entity実装）
-クリーンアーキテクチャ完成
+Domain層統合
 ```
 
 ### テストカバレッジ
@@ -576,26 +574,6 @@ Read: docs/basic_design.md
 - **IAM Role**: アクセス制御、最小権限設定
 - **VPC**: プライベートサブネット内への配置
 - **Security Group**: アクセス元IP制限
-
----
-
-## コスト最適化
-
-```
-月額運用コスト: $43.50
-
-内訳:
-- EC2 (t3.small):           $15.33 (35%)
-- ElastiCache (t4g.micro):  $11.68 (27%)
-- DynamoDB (On-Demand):     $5.00  (11%)
-- S3 (Standard):            $5.00  (11%)
-- その他 (SQS/CloudWatch):  $6.49  (15%)
-
-最適化施策:
-- リザーブドインスタンス検討（EC2 30%削減可能）
-- S3 Glacier移行（古いデータ 90%削減）
-- CloudWatch Logs保持期間最適化
-```
 
 ---
 
