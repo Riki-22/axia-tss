@@ -197,17 +197,16 @@ pie title 月額コスト内訳 ($43.50)
 
 ### インフラストラクチャ（AWS）
 
-| サービス | 用途 | コスト/月 |
-|---------|------|----------|
-| **EC2** (t3.small) | アプリケーション実行 | $15.33 |
-| **ElastiCache** (t4g.micro) | Redisキャッシュ | $11.68 |
-| **DynamoDB** (On-Demand) | 注文履歴・Kill Switch | $5.00 |
-| **S3** (Standard) | 長期データ保存 | $5.00 |
-| **SQS** (Standard) | 非同期注文処理 | $0.50 |
-| **CloudWatch** | 監視・ログ | $3.00 |
-| **Secrets Manager** | 認証情報管理 | $2.00 |
-| **VPC** | ネットワーク | $0.99 |
-| **合計** | | **$43.50** |
+| サービス | 用途 |
+|---------|------|
+| **EC2** (t3.small) | アプリケーション実行 |
+| **ElastiCache** (t4g.micro) | Redisキャッシュ |
+| **DynamoDB** (On-Demand) | 注文履歴・Kill Switch |
+| **S3** (Standard) | 長期データ保存 |
+| **SQS** (Standard) | 非同期注文処理 |
+| **CloudWatch** | 監視・ログ |
+| **Secrets Manager** | 認証情報管理 |
+| **VPC** | ネットワーク |
 
 ### データベース
 - **Redis** (ElastiCache): ホットキャッシュ、15-94ms応答
