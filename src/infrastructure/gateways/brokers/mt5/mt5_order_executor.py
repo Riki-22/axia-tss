@@ -30,13 +30,13 @@ class MT5OrderExecutor:
     
     def execute_order(self, payload: Dict[str, Any], mt5_credentials: Dict[str, Any]) -> Tuple[bool, Optional[Any]]:
         """SQSペイロードに基づいてMT5に注文を送信する"""
-        
-        # 接続確認
-        if not self.connection.ensure_connected():
-            logger.error("MT5が接続されていません")
-            return False, None
-        
+
         try:
+            # 接続確認
+            if not self.connection.ensure_connected():
+                logger.error("MT5が接続されていません")
+                return False, None
+
             logger.info("MT5注文実行処理を開始...")
             symbol = payload.get('symbol')
             order_action_str = payload.get('order_action', '').upper()
@@ -193,11 +193,14 @@ class MT5OrderExecutor:
                 return False, None
             elif result.retcode == mt5.TRADE_RETCODE_DONE or result.retcode == mt5.TRADE_RETCODE_PLACED:
                 logger.info(f"注文成功/受付: Ticket={result.order}, Price={result.price}")
-                
-                # DynamoDBへの保存
-                if not self.order_repository.save_mt5_result(result, payload, mt5_credentials.get('mt5_login')):
-                    logger.error(f"注文 (Ticket: {result.order}) はMT5で成功/受付済みですが、DynamoDBへの保存に失敗しました")
-                
+
+                # DynamoDBへの保存（例外をキャッチして注文成功は保証）
+                try:
+                    if not self.order_repository.save_mt5_result(result, payload, mt5_credentials.get('mt5_login')):
+                        logger.error(f"注文 (Ticket: {result.order}) はMT5で成功/受付済みですが、DynamoDBへの保存に失敗しました")
+                except Exception as e:
+                    logger.error(f"注文 (Ticket: {result.order}) はMT5で成功/受付済みですが、DynamoDBへの保存中に例外発生: {e}", exc_info=True)
+
                 return True, result
             else:
                 logger.error(f"注文失敗: Retcode={result.retcode}, Comment={result.comment}")

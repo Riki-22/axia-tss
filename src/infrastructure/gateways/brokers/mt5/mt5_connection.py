@@ -49,23 +49,41 @@ class MT5Connection:
             return False
         
         logger.info(f"MT5に接続試行... Login: {login_id}, Server: {server}, Path: {self.terminal_path}")
-        
-        if not mt5.initialize(login=login_id, password=password, server=server, 
-                            timeout=10000, path=self.terminal_path):
-            error_code = mt5.last_error()
-            logger.error(f"MT5 initialize() 失敗: code={error_code[0]}, 説明={error_code[1]}")
-            mt5.shutdown()
+
+        try:
+            if not mt5.initialize(login=login_id, password=password, server=server,
+                                timeout=10000, path=self.terminal_path):
+                error_code = mt5.last_error()
+                logger.error(f"MT5 initialize() 失敗: code={error_code[0]}, 説明={error_code[1]}")
+                mt5.shutdown()
+                return False
+            else:
+                logger.info("MT5 initialize() 成功。")
+
+                # Terminal情報取得（例外を個別にキャッチ）
+                try:
+                    terminal_info = mt5.terminal_info()
+                    if terminal_info:
+                        logger.info(f"接続先ターミナル: {terminal_info.name}, Build: {terminal_info.build}")
+                except Exception as e:
+                    logger.warning(f"Terminal情報取得中に例外: {e}")
+
+                # 口座情報取得（例外を個別にキャッチ）
+                try:
+                    account_info = mt5.account_info()
+                    if account_info:
+                        logger.info(f"口座情報: Login={account_info.login}, Balance={account_info.balance:.2f}")
+                except Exception as e:
+                    logger.warning(f"口座情報取得中に例外: {e}")
+
+                self._connected = True
+                return True
+        except (TimeoutError, OSError) as e:
+            logger.error(f"MT5接続中にネットワークエラー: {e}")
             return False
-        else:
-            logger.info("MT5 initialize() 成功。")
-            terminal_info = mt5.terminal_info()
-            if terminal_info:
-                logger.info(f"接続先ターミナル: {terminal_info.name}, Build: {terminal_info.build}")
-            account_info = mt5.account_info()
-            if account_info:
-                logger.info(f"口座情報: Login={account_info.login}, Balance={account_info.balance:.2f}")
-            self._connected = True
-            return True
+        except Exception as e:
+            logger.error(f"MT5接続中に予期せぬエラー: {e}", exc_info=True)
+            return False
     
     def disconnect(self):
         """MT5から切断"""
@@ -80,8 +98,13 @@ class MT5Connection:
         """接続状態確認"""
         if not self._connected:
             return False
-        terminal_info = mt5.terminal_info()
-        return terminal_info is not None and terminal_info.connected
+
+        try:
+            terminal_info = mt5.terminal_info()
+            return terminal_info is not None and terminal_info.connected
+        except Exception as e:
+            logger.error(f"接続状態確認中に例外: {e}")
+            return False
     
     def ensure_connected(self) -> bool:
         """接続を確保（必要なら再接続）"""
