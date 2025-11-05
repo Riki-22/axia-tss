@@ -321,39 +321,47 @@ class TestS3OhlcvDataRepository:
         """days指定でデータ読み込み"""
         import pandas as pd
         import io
-        
-        # モックデータ準備
+        from datetime import datetime, timedelta
+
+        # 今日の日付を使用（days=1は今日と昨日のデータを取得）
+        today = datetime.now()
+
+        # モックデータ準備（今日の日付で）
         test_df = pd.DataFrame({
-            'timestamp_utc': pd.date_range('2025-10-15', periods=24, freq='h'),
+            'timestamp_utc': pd.date_range(today.strftime('%Y-%m-%d'), periods=24, freq='h'),
             'open': [100.0] * 24,
             'high': [101.0] * 24,
             'low': [99.0] * 24,
             'close': [100.5] * 24,
             'volume': [1000] * 24
         })
-        
+
         buffer = io.BytesIO()
         test_df.to_parquet(buffer, index=False)
         buffer.seek(0)
         parquet_data = buffer.getvalue()
-        
-        # S3モック設定
+
+        # S3モック設定（今日の日付でパスを生成）
+        s3_key = f'symbol=USDJPY/timeframe=H1/source=mt5/year={today.year}/month={today.month:02d}/day={today.day:02d}/data.parquet'
         self.s3_client.list_objects_v2.return_value = {
             'Contents': [
-                {'Key': 'symbol=USDJPY/timeframe=H1/source=mt5/year=2025/month=10/day=15/data.parquet'}
+                {'Key': s3_key}
             ]
         }
-        # 修正: BytesIOを新しく作成
+        # 修正: BytesIOを新しく作成して、先頭に位置を戻す
+        body_stream = io.BytesIO(parquet_data)
+        body_stream.seek(0)
         self.s3_client.get_object.return_value = {
-            'Body': io.BytesIO(parquet_data)
+            'Body': body_stream
         }
-        
+
         # テスト実行（days=1）
         result = self.repo.load_ohlcv('USDJPY', 'H1', days=1)
-        
+
         assert result is not None
         assert len(result) > 0
-        assert 'timestamp_utc' in result.columns
+        # timestamp_utcはインデックスになっている
+        assert result.index.name == 'timestamp_utc' or 'timestamp_utc' in result.columns
     
     def test_load_ohlcv_with_date_range(self):
         """start_date/end_date指定でデータ読み込み"""

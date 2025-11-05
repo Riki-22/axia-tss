@@ -199,22 +199,77 @@ class TestCollectOhlcvDataUseCase:
             timeframes=['M15'],  # 定義なし
             fetch_counts={'H1': 24, 'DEFAULT': 500}
         )
-        
+
         # MT5からのデータ取得成功
         self.mt5_collector.fetch_ohlcv_data.return_value = self.test_df
         self.s3_repo.save_ohlcv.return_value = True
         self.ohlcv_cache.save_ohlcv.return_value = True
         self.ohlcv_cache.get_cache_stats.return_value = {}
-        
+
         # 実行
         use_case.execute()
-        
+
         # 検証: DEFAULTの500が使われる
         self.mt5_collector.fetch_ohlcv_data.assert_called_once_with(
             symbol='USDJPY',
             timeframe='M15',
             count=500
         )
+
+    def test_init_empty_symbols(self):
+        """空のsymbolsリストでValueError発生
+
+        条件: symbols=[]
+        期待: ValueError発生
+        """
+        # Arrange & Act & Assert
+        with pytest.raises(ValueError, match="symbols must not be empty"):
+            CollectOhlcvDataUseCase(
+                mt5_data_collector=self.mt5_collector,
+                s3_repository=self.s3_repo,
+                ohlcv_cache=self.ohlcv_cache,
+                symbols=[],  # 空リスト
+                timeframes=['H1'],
+                fetch_counts={'DEFAULT': 1000}
+            )
+
+    def test_init_empty_timeframes(self):
+        """空のtimeframesリストでValueError発生
+
+        条件: timeframes=[]
+        期待: ValueError発生
+        """
+        # Arrange & Act & Assert
+        with pytest.raises(ValueError, match="timeframes must not be empty"):
+            CollectOhlcvDataUseCase(
+                mt5_data_collector=self.mt5_collector,
+                s3_repository=self.s3_repo,
+                ohlcv_cache=self.ohlcv_cache,
+                symbols=['USDJPY'],
+                timeframes=[],  # 空リスト
+                fetch_counts={'DEFAULT': 1000}
+            )
+
+    def test_execute_empty_dataframe(self):
+        """MT5が空のDataFrameを返す場合
+
+        条件: MT5から空のDataFrameが返却
+        期待: 警告ログ、処理スキップ、False返却
+        """
+        # Arrange
+        # 空のDataFrameを返す
+        empty_df = pd.DataFrame()
+        self.mt5_collector.fetch_ohlcv_data.return_value = empty_df
+
+        # Act
+        result = self.use_case.execute()
+
+        # Assert
+        assert result is False  # 全て失敗
+
+        # S3とRedisは呼ばれない
+        assert self.s3_repo.save_ohlcv.call_count == 0
+        assert self.ohlcv_cache.save_ohlcv.call_count == 0
 
 
 # テスト実行
