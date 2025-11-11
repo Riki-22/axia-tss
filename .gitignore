@@ -39,3 +39,4 @@ Thumbs.db
 **/archive/
 **/draft/
 docs/templates/
+*coverage*
