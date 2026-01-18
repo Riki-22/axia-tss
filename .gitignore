@@ -38,5 +38,6 @@ Thumbs.db
 # docs
 **/archive/
 **/draft/
-docs/templates/
 *coverage*
+docs/templates/
+docs/trade_log/
